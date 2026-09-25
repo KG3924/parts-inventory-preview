@@ -1,0 +1,3672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Parts Inventory – Remote</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="public-config.js"></script>
+  <script src="shop-auth.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    :root {
+      --bg: #f4f6f9;
+      --card: #ffffff;
+      --border: #e2e8f0;
+      --text: #1e293b;
+      --muted: #64748b;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --success: #16a34a;
+      --danger: #dc2626;
+      --warning: #d97706;
+      --open-order: #7c3aed;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      min-height: 100vh;
+      padding: 0.75rem;
+      padding-bottom: 5.5rem;
+    }
+    .container { max-width: 920px; margin: 0 auto; }
+    header {
+      display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center;
+      gap: 0.75rem; margin-bottom: 1rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--border);
+    }
+    h1 { font-size: 1.25rem; font-weight: 600; }
+    .user-bar { display: flex; gap: 0.5rem; align-items: center; font-size: 0.85rem; }
+    .user-bar select {
+      background: var(--card); border: 1px solid var(--border); color: var(--text);
+      padding: 0.35rem 0.5rem; border-radius: 6px; font-size: 0.85rem; max-width: 130px;
+    }
+    .tabs {
+      display: flex; gap: 0.35rem; position: fixed; bottom: 0; left: 0; right: 0;
+      background: var(--card); border-top: 1px solid var(--border); padding: 0.5rem;
+      z-index: 100; justify-content: center;
+    }
+    .tab {
+      background: transparent; border: 1px solid transparent; color: var(--muted);
+      padding: 0.5rem 0.4rem; border-radius: 8px; cursor: pointer; font-size: 0.68rem;
+      flex: 1; max-width: 78px; text-align: center;
+    }
+    .tab.active { background: var(--accent); color: white; }
+    .panel { display: none; }
+    .panel.active { display: block; }
+    .card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+      padding: 1rem; margin-bottom: 0.85rem;
+    }
+    .card h2 { font-size: 1rem; margin-bottom: 0.75rem; }
+    label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 0.25rem; }
+    input, select, textarea {
+      width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text);
+      padding: 0.55rem 0.7rem; border-radius: 8px; font-size: 0.95rem; margin-bottom: 0.7rem;
+    }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+    .row { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+    .row > * { flex: 1; min-width: 120px; }
+    button {
+      background: var(--accent); color: white; border: none; padding: 0.6rem 1rem;
+      border-radius: 8px; font-size: 0.9rem; cursor: pointer;
+    }
+    button:hover { background: var(--accent-hover); }
+    button.secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
+    .btn-group { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.4rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th, td { text-align: left; padding: 0.5rem 0.3rem; vertical-align: middle; }
+    tbody tr { border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 500; font-size: 0.72rem; text-transform: uppercase; border-bottom: 1px solid var(--border); }
+    .qty { font-weight: 600; }
+    .qty.low { color: var(--warning); }
+    .qty.out { color: var(--danger); }
+    .badge {
+      display: inline-block; font-size: 0.68rem; padding: 0.12rem 0.4rem; border-radius: 4px;
+      font-weight: 500; margin-right: 0.25rem; margin-top: 0.15rem;
+    }
+    .badge.open-order { background: rgba(168, 85, 247, 0.2); color: var(--open-order); }
+    .badge.needs-date { background: rgba(239, 68, 68, 0.2); color: var(--danger); }
+    .badge.low { background: rgba(245, 158, 11, 0.2); color: var(--warning); }
+    .barcode-preview { text-align: center; padding: 1rem; background: white; border-radius: 8px; margin: 0.75rem 0; }
+    .status {
+      padding: 0.65rem 0.85rem; border-radius: 8px; margin-bottom: 0.75rem; display: none; font-size: 0.9rem;
+    }
+    .status.show { display: block; }
+    .status.success { background: rgba(34, 197, 94, 0.15); color: var(--success); border: 1px solid var(--success); }
+    .status.error { background: rgba(239, 68, 68, 0.15); color: var(--danger); border: 1px solid var(--danger); }
+    .status.info { background: rgba(59, 130, 246, 0.15); color: var(--accent); border: 1px solid var(--accent); }
+    .actions {
+      display: flex; gap: 0.2rem; flex-wrap: nowrap; align-items: center; justify-content: flex-end;
+      white-space: nowrap;
+    }
+    .actions button { padding: 0.25rem 0.4rem; font-size: 0.7rem; flex-shrink: 0; }
+    .empty { text-align: center; color: var(--muted); padding: 1.5rem; }
+    .stats {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem; margin-bottom: 0.85rem;
+    }
+    .stat {
+      background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+      padding: 0.6rem 0.35rem; text-align: center;
+    }
+    .stat.clickable { cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s; }
+    .stat.clickable:hover { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(37,99,235,0.12); }
+    .stat.clickable.active-filter { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(37,99,235,0.2); }
+    .stat-value { font-size: 1.15rem; font-weight: 700; }
+    .stat-label { font-size: 0.68rem; color: var(--muted); }
+    .value-cards {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.6rem; margin-bottom: 1rem;
+    }
+    .value-card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 0.85rem;
+    }
+    .value-card.clickable { cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s; }
+    .value-card.clickable:hover { border-color: var(--danger); box-shadow: 0 0 0 2px rgba(220,38,38,0.12); }
+    .value-card.clickable.active-filter { border-color: var(--danger); box-shadow: 0 0 0 2px rgba(220,38,38,0.2); }
+    .value-card .label { font-size: 0.72rem; color: var(--muted); margin-bottom: 0.25rem; }
+    .value-card .amount { font-size: 1.25rem; font-weight: 700; }
+    .home-filter-bar {
+      display: none; align-items: center; gap: 0.5rem; flex-wrap: wrap;
+      margin-bottom: 0.65rem; font-size: 0.82rem;
+    }
+    .home-filter-bar.show { display: flex; }
+    .attention-filters {
+      display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 0.75rem;
+    }
+    .filter-chip.att-chip.active { background: var(--danger); border-color: var(--danger); color: white; }
+    .filter-chip.att-chip:hover:not(.active) { border-color: var(--danger); color: var(--danger); }
+    .adj-filters { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem; align-items: flex-end; }
+    .adj-filters > div { min-width: 120px; flex: 1; }
+    .adj-filters label { margin-bottom: 0.2rem; }
+    .adj-filters input, .adj-filters select { margin-bottom: 0; }
+    @media print {
+      .adj-print-area, .adj-print-area * { visibility: visible !important; }
+      .adj-print-area { position: absolute; left: 0; top: 0; width: 100%; background: white; padding: 12px; }
+    }
+    #reader { width: 100%; max-width: 400px; margin: 0 auto 1rem; border-radius: 12px; overflow: hidden; }
+    .scan-result-card {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; margin-top: 0.75rem;
+    }
+    .hint { font-size: 0.78rem; color: var(--muted); margin-top: -0.4rem; margin-bottom: 0.6rem; }
+    .config-banner {
+      background: rgba(245, 158, 11, 0.15); border: 1px solid var(--warning); color: var(--warning);
+      padding: 0.75rem; border-radius: 8px; margin-bottom: 1rem; font-size: 0.85rem;
+    }
+    .order-box {
+      margin: 0.75rem 0; padding: 0.85rem; background: var(--bg); border-radius: 8px; border: 1px solid var(--border);
+    }
+    .filter-row { margin: 0.45rem 0 0.15rem; }
+    .filter-row-label {
+      font-size: 0.68rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em;
+      margin-bottom: 0.3rem; font-weight: 600;
+    }
+    .source-filters, .category-filters {
+      display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0 0 0.55rem;
+    }
+    .filter-chip {
+      background: var(--bg); border: 1px solid var(--border); color: var(--muted);
+      padding: 0.3rem 0.7rem; border-radius: 999px; font-size: 0.78rem; cursor: pointer;
+    }
+    .filter-chip.active {
+      background: var(--accent); border-color: var(--accent); color: white;
+    }
+    .filter-chip.cat-chip.active {
+      background: #0f766e; border-color: #0f766e; color: white;
+    }
+    .filter-chip:hover:not(.active) { border-color: var(--accent); color: var(--accent); }
+    .filter-chip.cat-chip:hover:not(.active) { border-color: #0f766e; color: #0f766e; }
+    .badge.category {
+      background: rgba(15, 118, 110, 0.12); color: #0f766e;
+    }
+    .badge.source-tag {
+      background: rgba(37, 99, 235, 0.1); color: var(--accent);
+    }
+    .user-bar select.user-missing {
+      border-color: var(--danger);
+      box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.15);
+    }
+    .user-required-banner {
+      background: rgba(220, 38, 38, 0.08); border: 1px solid var(--danger); color: var(--danger);
+      padding: 0.55rem 0.75rem; border-radius: 8px; margin-bottom: 0.75rem; font-size: 0.85rem;
+      display: none;
+    }
+    .user-required-banner.show { display: block; }
+    .danger-zone {
+      margin-top: 1rem; padding: 0.85rem; border: 1px solid var(--danger);
+      border-radius: 8px; background: rgba(220, 38, 38, 0.04);
+    }
+    .meta-line {
+      display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.2rem; align-items: center;
+    }
+    button.danger {
+      background: transparent; border: 1px solid var(--danger); color: var(--danger);
+    }
+    button.danger:hover { background: var(--danger); color: white; }
+    button.quote-btn {
+      background: transparent; border: 1px solid var(--open-order); color: var(--open-order);
+    }
+    button.quote-btn:hover { background: var(--open-order); color: white; }
+    button.adjust-btn {
+      background: transparent; border: 1px solid var(--success); color: var(--success);
+    }
+    button.adjust-btn:hover { background: var(--success); color: white; }
+    .badge.not-valued { background: rgba(100, 116, 139, 0.15); color: var(--muted); }
+    .badge.used { background: rgba(100, 116, 139, 0.18); color: #475569; }
+    .combo { position: relative; margin-bottom: 0.7rem; }
+    .combo input { margin-bottom: 0; padding-right: 2.2rem; }
+    .combo-caret {
+      position: absolute; right: 2px; top: 50%; transform: translateY(-50%);
+      width: 2rem; height: 2rem; padding: 0; margin: 0;
+      background: transparent; border: none; color: var(--muted); font-size: 0.85rem;
+    }
+    .combo-caret:hover { background: transparent; color: var(--text); }
+    .combo-menu {
+      display: none; position: absolute; left: 0; right: 0; top: calc(100% - 2px); z-index: 50;
+      max-height: 220px; overflow-y: auto; -webkit-overflow-scrolling: touch;
+      background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+    }
+    .combo-menu.open { display: block; }
+    .combo-opt {
+      display: block; width: 100%; text-align: left; padding: 0.6rem 0.75rem;
+      background: transparent; border: none; border-radius: 0; color: var(--text);
+      font-size: 1rem; margin: 0;
+    }
+    .combo-opt:hover, .combo-opt.active { background: #eff6ff; }
+    .combo-opt.exact { font-weight: 600; }
+    .combo-opt.new { color: var(--muted); font-style: italic; }
+    .combo-empty { padding: 0.6rem 0.75rem; color: var(--muted); font-size: 0.85rem; }
+    .scan-match-list { margin-top: 0.65rem; display: flex; flex-direction: column; gap: 0.4rem; }
+    .scan-match-row {
+      text-align: left; width: 100%; background: var(--card); border: 1px solid var(--border);
+      color: var(--text); padding: 0.55rem 0.7rem; border-radius: 8px; cursor: pointer;
+    }
+    .scan-match-row:hover { border-color: var(--accent); background: #eff6ff; }
+    #login-wall {
+      max-width: 420px; margin: 2.5rem auto; background: var(--card);
+      border: 1px solid var(--border); border-radius: 12px; padding: 1.1rem;
+    }
+    #login-wall h1 { font-size: 1.25rem; margin-bottom: 0.35rem; }
+    #login-wall p { font-size: 0.9rem; color: var(--muted); margin-bottom: 0.75rem; }
+    #login-error { color: var(--danger); font-size: 0.85rem; min-height: 1.2rem; }
+    body.auth-locked #app-shell { display: none; }
+    body:not(.auth-locked) #login-wall { display: none; }
+    .user-bar button.secondary { width: auto; margin: 0; padding: 0.35rem 0.6rem; font-size: 0.8rem; }
+    .pw-field { position: relative; margin-bottom: 0.7rem; }
+    .pw-field input { padding-right: 4.4rem; margin-bottom: 0; }
+    .pw-toggle {
+      position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+      width: auto; min-height: 0; margin: 0; padding: 0.3rem 0.5rem;
+      background: transparent; color: var(--accent); font-size: 0.8rem;
+    }
+    .pw-toggle:hover { background: transparent; }
+    .scan-match-row .mn { font-weight: 600; display: block; }
+    .scan-match-row .mp { font-size: 0.8rem; color: var(--muted); }
+    @media (max-width: 520px) {
+      .stats { grid-template-columns: repeat(2, 1fr); }
+      .tab { font-size: 0.65rem; padding: 0.45rem 0.2rem; }
+    }
+    /* Labels print in a dedicated popup window (avoids blank DK-1201 feeds from hidden page content). */
+  </style>
+  <script type="module" crossorigin src="/parts-inventory-preview/assets/index-CQTQqkHN.js"></script>
+</head>
+<body class="auth-locked">
+  <div id="login-wall">
+    <h1>In-Mar parts</h1>
+    <p>Unlock once for this shift. Your phone can fill the saved login with Face ID, Touch ID, or fingerprint. Scanning does not ask again.</p>
+    <form id="login-form" autocomplete="on">
+      <label for="login-who">Name</label>
+      <select id="login-who"></select>
+      <label for="login-email">Login</label>
+      <input id="login-email" name="username" type="email" autocomplete="username">
+      <label for="login-password">Password</label>
+      <div class="pw-field">
+        <input id="login-password" name="password" type="password" autocomplete="current-password" enterkeyhint="go">
+        <button type="button" class="pw-toggle" data-for="login-password">Show</button>
+      </div>
+      <button type="submit" id="login-btn">Unlock</button>
+      <p id="login-error"></p>
+      <p class="hint">First time on this phone: unlock once and let the phone save the password. Next open, the phone unlocks it. A shared tablet uses the same password once per shift. Sign-in lasts 12 hours.</p>
+    </form>
+  </div>
+  <div class="container" id="app-shell">
+    <header>
+      <h1>📦 Parts Inventory</h1>
+      <div class="user-bar">
+        <span id="signed-in-name"></span>
+        <button type="button" class="secondary" id="sign-out-btn">Sign out</button>
+      </div>
+    </header>
+
+    <div id="config-banner" class="config-banner" style="display:none;">
+      <strong>Setup required:</strong> Paste your Supabase Project URL and anon key near the top of the script section.
+    </div>
+    <div id="user-required-banner" class="user-required-banner" style="display:none;"></div>
+
+    <div id="status" class="status"></div>
+
+    <!-- DASHBOARD -->
+    <div id="dashboard" class="panel active">
+      <div class="stats" id="stats"></div>
+      <div class="value-cards" id="value-summary"></div>
+      <div class="card">
+        <div id="home-filter-bar" class="home-filter-bar">
+          <span id="home-filter-label" style="color:var(--muted);"></span>
+          <button type="button" class="secondary" style="padding:0.25rem 0.55rem;font-size:0.78rem;" onclick="clearHomeFilter()">Clear filter</button>
+        </div>
+        <input type="search" id="search" placeholder="Search name, part #, barcode, source, category, location..." oninput="renderTable()">
+        <div class="filter-row">
+          <div class="filter-row-label">Source</div>
+          <div id="source-filters" class="source-filters"></div>
+        </div>
+        <div class="filter-row">
+          <div class="filter-row-label">Category</div>
+          <div id="category-filters" class="category-filters"></div>
+        </div>
+        <div style="overflow-x: auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>Name / Part #</th>
+                <th>Qty</th>
+                <th>Value</th>
+                <th>Status</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="inventory-body"></tbody>
+          </table>
+        </div>
+        <div id="empty-msg" class="empty" style="display:none;">No parts yet. Add one or scan a new part number.</div>
+      </div>
+    </div>
+
+    <!-- SCAN -->
+    <div id="scan" class="panel">
+      <div class="card">
+        <h2>Phone Camera Scan</h2>
+        <p class="hint">Scan a QR, or type part of a name or part #. <strong>Commit</strong> before qty updates.</p>
+        <div id="reader"></div>
+        <div class="btn-group">
+          <button id="start-scan-btn" onclick="startScanner()">Start Camera</button>
+          <button class="secondary" id="stop-scan-btn" onclick="stopScanner()" style="display:none;">Stop Camera</button>
+        </div>
+        <hr style="border-color:var(--border); margin:1rem 0;">
+        <h2 style="font-size:0.95rem;">Or search name / part number</h2>
+        <div class="row" style="align-items:flex-end;">
+          <div style="flex:2;">
+            <input type="text" id="manual-scan" placeholder="e.g. belt, 1588, Artic 800" autocomplete="off" style="margin-bottom:0;"
+              oninput="onManualScanInput()" onkeydown="if(event.key==='Enter'){event.preventDefault();processManualScan();}">
+          </div>
+          <div style="flex:0;">
+            <button onclick="processManualScan()">Look up</button>
+          </div>
+        </div>
+        <div id="scan-result" style="margin-top:1rem;"></div>
+      </div>
+    </div>
+
+    <!-- ADD / EDIT -->
+    <div id="add" class="panel">
+      <div class="card">
+        <h2 id="form-title">Add Part</h2>
+        <input type="hidden" id="edit-id">
+        <label>Part Name *</label>
+        <input type="text" id="item-name" placeholder="e.g. Hydraulic Fitting 1/2&quot;" maxlength="120">
+        <p class="hint">Keep names ≤ <strong>32</strong> characters so the label stays large.</p>
+        <label>Part Number / SKU *</label>
+        <input type="text" id="item-barcode" placeholder="Existing part # – letters & numbers OK" maxlength="40">
+        <p class="hint">No spaces. The QR uses a separate ID, so editing this later does not require a reprint.</p>
+        <div class="row">
+          <div>
+            <label>Qty (new)</label>
+            <input type="number" id="item-qty" value="0" min="0">
+          </div>
+          <div>
+            <label>Qty (used)</label>
+            <input type="number" id="item-qty-used" value="0" min="0">
+          </div>
+        </div>
+        <p class="hint">Used = salvage from paid-off systems. Tracked, not valued.</p>
+        <div>
+          <label>Reorder level</label>
+          <input type="number" id="item-reorder" value="0" min="0">
+        </div>
+        <p class="hint">Low flags only when this is above 0 and new qty is at or below it.</p>
+        <div class="row">
+          <div>
+            <label>Source / Supplier</label>
+            <div class="combo" data-kind="source">
+              <input type="text" id="item-source" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Pick or type" oninput="syncPricingUi(); filterCombo('source')">
+              <button type="button" class="combo-caret" tabindex="-1" onclick="toggleCombo('source')">▾</button>
+              <div class="combo-menu" id="combo-source"></div>
+            </div>
+          </div>
+          <div>
+            <label>Category</label>
+            <div class="combo" data-kind="category">
+              <input type="text" id="item-category" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Pick or type" oninput="filterCombo('category')">
+              <button type="button" class="combo-caret" tabindex="-1" onclick="toggleCombo('category')">▾</button>
+              <div class="combo-menu" id="combo-category"></div>
+            </div>
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label id="item-list-price-label">List price ($ USD)</label>
+            <input type="number" id="item-list-price" step="0.01" min="0" placeholder="0.00" oninput="applySellFromList(true)">
+          </div>
+          <div>
+            <label id="item-sell-factor-label">Sell factor</label>
+            <input type="number" id="item-sell-factor" step="0.001" min="0" placeholder="optional" oninput="applySellFromList(true)">
+          </div>
+        </div>
+        <p class="hint" id="list-price-hint">Wynn = £ · FFS = € · Alu = kr. Sell = list × factor, up to $5.</p>
+        <div class="row">
+          <div>
+            <label>Buy Price ($ USD) — optional</label>
+            <input type="number" id="item-buy-price" step="0.01" min="0" placeholder="0.00">
+          </div>
+          <div>
+            <label>Sell Price ($ USD)</label>
+            <input type="number" id="item-sell-price" step="0.01" min="0" placeholder="0.00">
+          </div>
+        </div>
+        <p class="hint">Buy = list × exchange rate − 30%. Sell uses the sell factor.</p>
+        <label style="display:flex;align-items:flex-start;gap:0.5rem;margin:0.15rem 0 0.75rem;">
+          <input type="checkbox" id="item-exclude-value" style="width:auto;margin:0.2rem 0 0;">
+          <span><strong>Exclude from inventory valuation</strong><br>
+          <span class="hint" style="margin:0.15rem 0 0;">Whole SKU skipped (consignment). Used qty is already excluded.</span></span>
+        </label>
+        <label>Location / Bin</label>
+        <div class="combo" data-kind="location">
+          <input type="text" id="item-location" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Pick or type" oninput="filterCombo('location')">
+          <button type="button" class="combo-caret" tabindex="-1" onclick="toggleCombo('location')">▾</button>
+          <div class="combo-menu" id="combo-location"></div>
+        </div>
+        <label>Notes</label>
+        <textarea id="item-notes" rows="2" placeholder="Optional notes"></textarea>
+
+        <div class="order-box">
+          <label style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.6rem;">
+            <input type="checkbox" id="item-open-order" style="width:auto; margin:0;" onchange="toggleOrderFields()">
+            <span>Open Order</span>
+          </label>
+          <div id="order-fields" style="display:none;">
+            <div class="row">
+              <div>
+                <label>Order Date</label>
+                <input type="date" id="item-date-ordered">
+              </div>
+              <div>
+                <label>Est. Delivery Date</label>
+                <input type="date" id="item-est-delivery">
+              </div>
+            </div>
+            <label>Qty Ordered</label>
+            <input type="number" id="item-ordered-qty" min="0" placeholder="How many ordered">
+            <p class="hint" style="color:var(--warning);">Leave blank if unknown — flagged as Needs Delivery Date.</p>
+          </div>
+        </div>
+
+        <div class="btn-group">
+          <button onclick="saveItem()">Save</button>
+          <button class="secondary" onclick="clearForm()">Clear</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- REPORTS -->
+    <div id="reports" class="panel">
+      <div class="card">
+        <h2>Inventory Valuation</h2>
+        <p class="hint">New qty × buy. Used qty is excluded.</p>
+        <div class="value-cards" id="report-values"></div>
+      </div>
+      <div class="card">
+        <h2>Inventory Adjustment Report</h2>
+        <p class="hint">Who changed what, and when. Needs the adjustments table (More → SQL).</p>
+        <div class="adj-filters">
+          <div>
+            <label>User</label>
+            <select id="adj-user-filter">
+              <option value="">All users</option>
+              <option value="Glynn Grantham">Glynn Grantham</option>
+              <option value="Kyle Grantham">Kyle Grantham</option>
+              <option value="Toby Whitfield">Toby Whitfield</option>
+              <option value="Grant Adams">Grant Adams</option>
+              <option value="Ricky Whitfield">Ricky Whitfield</option>
+            </select>
+          </div>
+          <div>
+            <label>From</label>
+            <input type="date" id="adj-from">
+          </div>
+          <div>
+            <label>To</label>
+            <input type="date" id="adj-to">
+          </div>
+          <div>
+            <label>Action</label>
+            <select id="adj-action-filter">
+              <option value="">All actions</option>
+              <option value="stock_in">Stock in</option>
+              <option value="stock_out">Stock out</option>
+              <option value="set_qty">Set qty</option>
+              <option value="create">Create</option>
+              <option value="update">Update</option>
+              <option value="delete">Delete</option>
+              <option value="notes">Notes</option>
+            </select>
+          </div>
+        </div>
+        <div class="btn-group" style="margin-bottom:0.75rem;">
+          <button type="button" onclick="loadAdjustmentReport()">Generate report</button>
+          <button type="button" class="secondary" onclick="exportAdjustmentCsv()">Export CSV</button>
+          <button type="button" class="secondary" onclick="printAdjustmentReport()">Print</button>
+        </div>
+        <p class="hint" id="adj-status">Generate to load adjustments.</p>
+        <div class="adj-print-area" id="adj-report-table" style="overflow-x:auto;"></div>
+      </div>
+      <div class="card">
+        <h2>Price history</h2>
+        <p class="hint">Buy / sell / list changes over time.</p>
+        <div class="row">
+          <div>
+            <label>Part # or name</label>
+            <input type="search" id="price-hist-q" placeholder="Optional filter">
+          </div>
+        </div>
+        <div class="btn-group" style="margin-bottom:0.75rem;">
+          <button type="button" onclick="loadPriceHistory()">Generate</button>
+          <button type="button" class="secondary" onclick="exportPriceHistoryCsv()">Export CSV</button>
+        </div>
+        <p class="hint" id="price-hist-status"></p>
+        <div id="price-hist-table" style="overflow-x:auto;"></div>
+      </div>
+      <div class="card">
+        <h2>Ending inventory (LIFO / FIFO)</h2>
+        <p class="hint" id="costing-report-hint">Uses the method set on More. New stock only.</p>
+        <div class="btn-group" style="margin-bottom:0.75rem;">
+          <button type="button" onclick="loadEndingInventoryReport()">Generate</button>
+          <button type="button" class="secondary" onclick="exportEndingInventoryCsv()">Export CSV</button>
+        </div>
+        <p class="hint" id="ending-inv-status"></p>
+        <div id="ending-inv-table" style="overflow-x:auto;"></div>
+      </div>
+      <div class="card">
+        <h2>Items Needing Attention</h2>
+        <p class="hint">Tap a chip to filter.</p>
+        <div id="attention-filters" class="attention-filters"></div>
+        <div id="attention-list"></div>
+      </div>
+      <div class="card">
+        <h2>About these numbers</h2>
+        <p style="font-size:0.85rem; color:var(--muted);">
+          <strong>Cost</strong> = new qty × buy (or LIFO/FIFO layers). Used/salvage qty is not valued.
+        </p>
+      </div>
+    </div>
+
+    <!-- LABELS -->
+    <div id="labels" class="panel">
+      <div class="card">
+        <h2>Batch Print Labels</h2>
+        <p class="hint">QR opens this app to the part. Name/part # can change later without reprinting.</p>
+        
+        <div style="margin-bottom:0.75rem;">
+          <input type="search" id="label-search" placeholder="Filter parts..." oninput="populateLabelList()" style="margin-bottom:0.5rem;">
+          <div class="btn-group" style="margin-bottom:0.5rem;">
+            <button class="secondary" onclick="selectAllLabels(true)">Select All Visible</button>
+            <button class="secondary" onclick="selectAllLabels(false)">Clear</button>
+          </div>
+        </div>
+
+        <div id="label-checklist" style="max-height:280px; overflow-y:auto; border:1px solid var(--border); border-radius:8px; padding:0.5rem; margin-bottom:1rem; background:var(--bg);"></div>
+
+        <div class="btn-group">
+          <button onclick="generateBatchLabels()">Generate preview</button>
+        </div>
+      </div>
+
+      <div class="card" id="batch-preview-card" style="display:none;">
+        <h2>Label Preview <span id="batch-count" style="font-weight:400;color:var(--muted);font-size:0.85rem;"></span></h2>
+        <p class="hint" id="label-print-hint">Preview only — print from the buttons below.</p>
+        <div class="btn-group" style="margin-bottom:0.75rem;">
+          <button type="button" id="print-brother-btn" onclick="printLabelsBrother()">Print on Brother QL (DK-1201)</button>
+          <button type="button" class="secondary" id="print-paper-btn" onclick="printLabelsPaper()">Print on letter paper (8 / sheet)</button>
+        </div>
+        <p class="hint">DK-1201: print at <strong>100% / Actual size</strong>. Names ≤ 32 chars. Letter: 8 / sheet.</p>
+        <div id="batch-label-preview" style="background:white; border-radius:8px; padding:0.75rem; border:1px solid var(--border); overflow-x:auto;"></div>
+      </div>
+    </div>
+
+    <!-- QUOTE -->
+    <div id="quote" class="panel"></div>
+
+    <!-- MORE -->
+    <div id="data" class="panel">
+      <div class="card">
+        <h2>Passwords</h2>
+        <p class="hint">At least 8 characters. They save it again on their phone.</p>
+        <label for="pw-who">Person</label>
+        <select id="pw-who"></select>
+        <label for="pw-new">New password</label>
+        <div class="pw-field">
+          <input type="password" id="pw-new" autocomplete="new-password" minlength="8">
+          <button type="button" class="pw-toggle" data-for="pw-new">Show</button>
+        </div>
+        <label for="pw-again">Type it again</label>
+        <div class="pw-field">
+          <input type="password" id="pw-again" autocomplete="new-password" minlength="8">
+          <button type="button" class="pw-toggle" data-for="pw-again">Show</button>
+        </div>
+        <div class="btn-group">
+          <button type="button" onclick="setStaffPassword()">Set password</button>
+        </div>
+        <p class="hint" id="pw-status"></p>
+        <hr style="border-color:var(--border); margin:1.25rem 0;">
+        <h2>Backup</h2>
+        <div class="btn-group">
+          <button onclick="exportData()">Export JSON</button>
+          <button class="secondary" onclick="document.getElementById('import-file').click()">Import JSON</button>
+          <input type="file" id="import-file" accept=".json" style="display:none" onchange="importData(event)">
+        </div>
+        <p class="hint">Existing part numbers are skipped.</p>
+        <hr style="border-color:var(--border); margin:1.25rem 0;">
+        <h2 style="font-size:0.95rem;">Global sell factors</h2>
+        <p class="hint">Wynn £ and FFS €. Sell rounds up to $5.</p>
+        <div class="row">
+          <div>
+            <label>Wynn sell factor (GBP → $)</label>
+            <input type="number" id="global-wynn-factor" step="0.001" min="0" placeholder="2.585">
+          </div>
+          <div>
+            <label>FFS sell factor (EUR → $)</label>
+            <input type="number" id="global-ffs-factor" step="0.001" min="0" placeholder="enter when known">
+          </div>
+        </div>
+        <div class="btn-group">
+          <button type="button" class="secondary" onclick="saveGlobalFactorsOnly()">Save factors</button>
+          <button type="button" onclick="applyGlobalFactorsToInventory()">Apply to all Wynn / FFS parts</button>
+        </div>
+        <p class="hint" id="global-factor-status"></p>
+        <hr style="border-color:var(--border); margin:1.25rem 0;">
+        <h2 style="font-size:0.95rem;">Exchange rates (to USD)</h2>
+        <p class="hint">Buy = list × rate − 30%. Wynn £, FFS €, Alu kr.</p>
+        <div class="row">
+          <div>
+            <label>£ GBP</label>
+            <input type="number" id="fx-gbp" step="0.0001" min="0" placeholder="USD per £">
+          </div>
+          <div>
+            <label>€ EUR</label>
+            <input type="number" id="fx-eur" step="0.0001" min="0" placeholder="USD per €">
+          </div>
+          <div>
+            <label>kr NOK</label>
+            <input type="number" id="fx-nok" step="0.0001" min="0" placeholder="USD per kr">
+          </div>
+        </div>
+        <div class="btn-group">
+          <button type="button" class="secondary" onclick="fetchExchangeRates()">Fetch current rates</button>
+          <button type="button" class="secondary" onclick="saveExchangeRatesOnly()">Save rates</button>
+          <button type="button" onclick="applyExchangeRatesToInventory()">Apply buy $ to Wynn / FFS / Alu</button>
+        </div>
+        <p class="hint" id="fx-status"></p>
+        <hr style="border-color:var(--border); margin:1.25rem 0;">
+        <h2 style="font-size:0.95rem;">Inventory costing</h2>
+        <p class="hint">Ending inventory of new stock. Used/salvage is $0.</p>
+        <label>Method</label>
+        <select id="costing-method" onchange="saveCostingMethod()">
+          <option value="fifo">FIFO — oldest cost first</option>
+          <option value="lifo">LIFO — newest cost first</option>
+        </select>
+        <hr style="border-color:var(--border); margin:1.25rem 0;">
+        <h2 style="font-size:0.95rem;">Supabase Connection</h2>
+        <p class="hint" id="conn-status">Checking…</p>
+        <p class="hint" id="schema-status" style="margin-top:0.35rem;"></p>
+        <hr style="border-color:var(--border); margin:1.25rem 0;">
+        <h2 style="font-size:0.95rem;">Database setup (run once in Supabase SQL Editor)</h2>
+        <p class="hint">Columns and tables only. Shop access is signed-in users. Do not add open policies.</p>
+        <pre id="category-sql" style="font-size:0.65rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:0.65rem;overflow:auto;white-space:pre-wrap;max-height:240px;">-- Do not add "allow all" or anon policies. Shop access is signed-in only.
+-- The lock already lives in schema/auth_lock_after_merge.sql (already applied on live).
+-- Inventory extras
+alter table inventory add column if not exists category text;
+alter table inventory add column if not exists barcode text;
+alter table inventory add column if not exists exclude_from_valuation boolean default false;
+alter table inventory add column if not exists list_price numeric;
+alter table inventory add column if not exists list_currency text;
+alter table inventory add column if not exists sell_factor numeric;
+create unique index if not exists inventory_barcode_uidx on inventory (barcode) where barcode is not null;
+create index if not exists inventory_category_idx on inventory (category);
+create index if not exists inventory_source_idx on inventory (source);
+
+create table if not exists inventory_adjustments (
+  id uuid primary key default gen_random_uuid(),
+  inventory_id uuid, part_number text, name text, action text not null,
+  qty_before integer, qty_after integer, changed_by text, details text,
+  created_at timestamptz default now()
+);
+alter table inventory_adjustments enable row level security;
+
+-- Phase 1 quotes (NEW tables only — does not alter inventory rows)
+create table if not exists customers (
+  id uuid primary key default gen_random_uuid(),
+  name text not null, company text, email text, phone text, notes text,
+  created_at timestamptz default now(), updated_at timestamptz default now()
+);
+create table if not exists quotes (
+  id uuid primary key default gen_random_uuid(),
+  number text not null unique,
+  customer_id uuid references customers(id) on delete set null,
+  customer_name text,
+  status text not null default 'draft',
+  quote_date date, valid_until date, prepared_by text, notes text, created_by text,
+  created_at timestamptz default now(), updated_at timestamptz default now()
+);
+create index if not exists quotes_status_idx on quotes (status);
+create table if not exists quote_lines (
+  id uuid primary key default gen_random_uuid(),
+  quote_id uuid not null references quotes(id) on delete cascade,
+  line_no integer not null default 1,
+  inventory_id uuid, part_number text, name text not null,
+  qty numeric not null default 1, unit_price numeric not null default 0
+);
+create index if not exists quote_lines_quote_id_idx on quote_lines (quote_id);
+create table if not exists document_counters (
+  doc_type text not null, year integer not null, last_value integer not null default 0,
+  primary key (doc_type, year)
+);
+alter table customers enable row level security;
+alter table quotes enable row level security;
+alter table quote_lines enable row level security;
+alter table document_counters enable row level security;
+grant select, insert, update, delete on table customers to authenticated;
+grant select, insert, update, delete on table quotes to authenticated;
+grant select, insert, update, delete on table quote_lines to authenticated;
+grant select, insert, update, delete on table document_counters to authenticated;
+grant select, insert, update, delete on table inventory_adjustments to authenticated;
+
+-- Phase 2 quote extras / packing lists / invoices (additive)
+alter table quotes add column if not exists project text;
+alter table quotes add column if not exists rfq_number text;
+alter table quotes add column if not exists fob_point text;
+alter table quotes add column if not exists payment_terms text;
+alter table quotes add column if not exists lead_time text;
+alter table customers add column if not exists payment_terms text;
+create index if not exists quotes_customer_id_idx on quotes (customer_id);
+create table if not exists app_settings (key text primary key, value text, updated_at timestamptz default now());
+create table if not exists app_lookups (kind text not null, value text not null, created_at timestamptz default now(), primary key (kind, value));
+create table if not exists packing_lists (
+  id uuid primary key default gen_random_uuid(), number text not null unique,
+  quote_id uuid references quotes(id) on delete set null, customer_name text, project text,
+  pack_date date, prepared_by text, notes text, created_by text, created_at timestamptz default now());
+create table if not exists packing_list_lines (
+  id uuid primary key default gen_random_uuid(), packing_list_id uuid not null references packing_lists(id) on delete cascade,
+  line_no integer not null default 1, inventory_id uuid, part_number text, name text not null, qty numeric not null default 1);
+create table if not exists invoices (
+  id uuid primary key default gen_random_uuid(), number text not null unique,
+  quote_id uuid references quotes(id) on delete set null,
+  customer_name text, project text, po_number text, ship_to text, invoice_date date, due_date date,
+  fob_point text, payment_terms text, cc_used boolean default false, cc_fee_rate numeric default 0.035,
+  cc_fee_amount numeric default 0, shipping_fee numeric default 0, duty numeric default 0, tariffs numeric default 0,
+  subtotal numeric default 0, total numeric default 0, prepared_by text, notes text,
+  status text not null default 'draft', created_by text,
+  created_at timestamptz default now(), updated_at timestamptz default now());
+create table if not exists invoice_lines (
+  id uuid primary key default gen_random_uuid(), invoice_id uuid not null references invoices(id) on delete cascade,
+  line_no integer not null default 1, inventory_id uuid, part_number text, name text not null,
+  qty numeric not null default 1, unit_price numeric not null default 0);
+create index if not exists packing_lists_quote_id_idx on packing_lists (quote_id);
+create index if not exists packing_list_lines_pl_id_idx on packing_list_lines (packing_list_id);
+create index if not exists invoices_quote_id_idx on invoices (quote_id);
+create index if not exists invoice_lines_invoice_id_idx on invoice_lines (invoice_id);
+insert into app_lookups (kind, value) values
+  ('fob','Origin'),('fob','Destination'),
+  ('payment_terms','Due on receipt'),('payment_terms','Net 15'),
+  ('payment_terms','Net 30'),('payment_terms','Net 45'),('payment_terms','Net 60')
+on conflict do nothing;
+alter table app_settings enable row level security;
+alter table app_lookups enable row level security;
+alter table packing_lists enable row level security;
+alter table packing_list_lines enable row level security;
+alter table invoices enable row level security;
+alter table invoice_lines enable row level security;
+grant select, insert, update, delete on table app_settings to authenticated;
+grant select, insert, update, delete on table app_lookups to authenticated;
+grant select, insert, update, delete on table packing_lists to authenticated;
+grant select, insert, update, delete on table packing_list_lines to authenticated;
+grant select, insert, update, delete on table invoices to authenticated;
+grant select, insert, update, delete on table invoice_lines to authenticated;
+notify pgrst, 'reload schema';
+
+-- Phase 3: used qty, price history, LIFO/FIFO layers
+alter table inventory add column if not exists qty_used integer default 0;
+create index if not exists inventory_location_idx on inventory (location);
+create table if not exists inventory_price_history (
+  id uuid primary key default gen_random_uuid(), inventory_id uuid, part_number text, name text,
+  recorded_at timestamptz default now(), buy_price numeric, sell_price numeric, list_price numeric,
+  list_currency text, qty integer, qty_used integer, note text, changed_by text);
+create index if not exists inventory_price_history_part_idx on inventory_price_history (part_number, recorded_at desc);
+create table if not exists inventory_cost_layers (
+  id uuid primary key default gen_random_uuid(), inventory_id uuid, part_number text,
+  acquired_at timestamptz default now(), unit_cost numeric not null default 0,
+  qty_original numeric not null default 0, qty_remaining numeric not null default 0,
+  condition text not null default 'new', source text, changed_by text);
+create index if not exists inventory_cost_layers_inv_idx on inventory_cost_layers (inventory_id, condition, acquired_at);
+alter table inventory_price_history enable row level security;
+alter table inventory_cost_layers enable row level security;
+grant select, insert, update, delete on table inventory_price_history to authenticated;
+grant select, insert, update, delete on table inventory_cost_layers to authenticated;
+notify pgrst, 'reload schema';</pre>
+        <button class="secondary" onclick="copyCategorySql()" style="margin-top:0.4rem;">Copy SQL</button>
+        <div class="danger-zone">
+          <h2 style="font-size:0.95rem;color:var(--danger);">Danger zone</h2>
+          <p class="hint">Deletes every part. Export a backup first.</p>
+          <button class="danger" onclick="clearAllInventory()">Clear all inventory…</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="dashboard">Home</button>
+    <button class="tab" data-tab="scan">Scan</button>
+    <button class="tab" data-tab="add">Add</button>
+    <button class="tab" data-tab="quote">Quote</button>
+    <button class="tab" data-tab="reports">Reports</button>
+    <button class="tab" data-tab="labels">Labels</button>
+    <button class="tab" data-tab="data">More</button>
+  </div>
+
+  <script>
+    const SUPABASE_URL = window.INMAR_PUBLIC.url;
+    const SUPABASE_ANON_KEY = window.INMAR_PUBLIC.anonKey;
+
+    const isConfigured = SUPABASE_URL !== 'YOUR_SUPABASE_URL' && SUPABASE_ANON_KEY !== 'YOUR_SUPABASE_ANON_KEY';
+    let supabaseClient = null;
+    let inventory = [];
+    let html5QrCode = null;
+    let scanning = false;
+    let activeSourceFilter = 'All';
+    let activeCategoryFilter = 'All';
+    let homeAttentionFilter = null; // 'open_order' | 'needs_date' | 'out' | 'low' | null
+    let attentionFilter = 'all'; // reports attention chips
+    let hasCategoryColumn = true;
+    let hasBarcodeColumn = true;
+    let hasAdjustmentsTable = true;
+    let hasQuotesTables = true;
+    let hasPhase2Tables = false;
+    let hasExcludeValueColumn = false;
+    let hasListPriceColumn = false;
+    let hasQtyUsedColumn = false;
+    let hasPriceHistoryTable = false;
+    let hasCostLayersTable = false;
+    let costingMethod = 'fifo';
+    let lastPriceHistoryRows = [];
+    let lastEndingInvRows = [];
+    let lastAdjustmentRows = [];
+    let sessionUser = ''; // signed-in full name only; not a pick-list
+
+    /** Suggested categories from consolidated spreadsheet (also grows from live data). */
+    const DEFAULT_CATEGORIES = [
+      'Alarm', 'Arm', 'Bearing', 'Blade', 'Cable', 'Chair Parts', 'Complete System',
+      'Control Unit', 'Cylinder Seal Kit', 'Electrical', 'Filter', 'Fitting/Hose',
+      'Gasket', 'Gasket/Seal', 'Hardware', 'Heater', 'Motor', 'Nozzle', 'O-Ring',
+      'Packaging', 'Packing/Seal', 'Proximity Switch', 'Pump', 'Pump Parts',
+      'Seal/Service Kit', 'Spring', 'Spring/Strut', 'V-Belt', 'Valve'
+    ];
+    const DEFAULT_SOURCES = [
+      'Alu Design', 'FFS', 'In-Mar', 'Skum', 'Triplex', 'Versa', 'Wynn', 'Amazon', 'Uline'
+    ];
+
+    if (isConfigured && window.InmarAuth) {
+      supabaseClient = window.InmarAuth.client;
+    } else {
+      document.getElementById('config-banner').style.display = 'block';
+    }
+
+    function showStatus(msg, type = 'info') {
+      const el = document.getElementById('status');
+      el.textContent = msg;
+      el.className = 'status show ' + type;
+      setTimeout(() => el.classList.remove('show'), 4500);
+    }
+    function escapeHtml(s) {
+      return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+    function money(n) {
+      if (n == null || isNaN(n)) return '—';
+      return '$' + Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    /** List-currency profiles. Wynn = GBP, FFS = EUR, Alu = NOK, else USD. */
+    const DEFAULT_GBP_SELL_FACTOR = 2.585;
+    const FACTOR_KEYS = { GBP: 'inv_gbp_sell_factor', EUR: 'inv_eur_sell_factor', USD: 'inv_usd_sell_factor', NOK: 'inv_nok_sell_factor' };
+    const FX_KEYS = { GBP: 'inv_fx_gbp_usd', EUR: 'inv_fx_eur_usd', NOK: 'inv_fx_nok_usd' };
+    const FX_SETTING = { GBP: 'fx_gbp_usd', EUR: 'fx_eur_usd', NOK: 'fx_nok_usd' };
+    const FX_INPUT = { GBP: 'fx-gbp', EUR: 'fx-eur', NOK: 'fx-nok' };
+
+    function pricingProfile(source) {
+      const s = String(source || '').trim().toLowerCase();
+      if (s === 'wynn' || s.startsWith('wynn ') || s === 'hepworth') {
+        return { code: 'GBP', symbol: '£', label: 'List price (£ GBP)', factorLabel: 'GBP → sell factor', defaultFactor: DEFAULT_GBP_SELL_FACTOR, usesFx: true };
+      }
+      if (s === 'ffs' || s.includes('fluid')) {
+        return { code: 'EUR', symbol: '€', label: 'List price (€ EUR)', factorLabel: 'EUR → sell factor', defaultFactor: null, usesFx: true };
+      }
+      if (s === 'alu' || s.startsWith('alu ')) {
+        return { code: 'NOK', symbol: 'kr', label: 'List price (kr NOK)', factorLabel: 'NOK → sell factor', defaultFactor: null, usesFx: true };
+      }
+      return { code: 'USD', symbol: '$', label: 'List price ($ USD)', factorLabel: 'USD sell factor (optional)', defaultFactor: 1, usesFx: false };
+    }
+
+    function storedFactor(code) {
+      try {
+        const n = parseFloat(localStorage.getItem(FACTOR_KEYS[code] || ''));
+        if (isFinite(n) && n > 0) return n;
+      } catch (e) { /* ignore */ }
+      return null;
+    }
+
+    function persistFactor(code, n) {
+      if (!code || !isFinite(n) || n <= 0) return;
+      try { localStorage.setItem(FACTOR_KEYS[code], String(n)); } catch (e) { /* ignore */ }
+    }
+
+    /** Round sell $ up to the next $5 increment (130.01 → 135, 129.99 → 130, 130 → 130). */
+    function ceilTo5(n) {
+      const x = Number(n);
+      if (!isFinite(x) || x <= 0) return 0;
+      return Math.ceil(x / 5 - 1e-9) * 5;
+    }
+
+    function buyFromListFx(list, fx) {
+      const usd = Number(list) * Number(fx);
+      if (!isFinite(usd) || usd <= 0) return null;
+      return Math.round(usd * 0.70 * 100) / 100;
+    }
+    function wynnBuyFromList(listGbp, factor) {
+      return buyFromListFx(listGbp, factor);
+    }
+
+    function storedFx(code) {
+      try {
+        const n = parseFloat(localStorage.getItem(FX_KEYS[code] || ''));
+        if (isFinite(n) && n > 0) return n;
+      } catch (e) {}
+      const el = document.getElementById(FX_INPUT[code]);
+      const typed = parseFloat(el?.value);
+      if (isFinite(typed) && typed > 0) return typed;
+      return null;
+    }
+    function persistFx(code, n) {
+      if (!code || !isFinite(n) || n <= 0) return;
+      try { localStorage.setItem(FX_KEYS[code], String(n)); } catch (e) {}
+    }
+    function currentFxRate(code) {
+      const el = document.getElementById(FX_INPUT[code]);
+      const typed = parseFloat(el?.value);
+      if (isFinite(typed) && typed > 0) return typed;
+      return storedFx(code);
+    }
+
+    function isLowStock(i) {
+      const r = Number(i.reorder_level);
+      if (!isFinite(r) || r <= 0) return false;
+      return (Number(i.qty) || 0) > 0 && (Number(i.qty) || 0) <= r;
+    }
+    function qtyUsedOf(i) { return Number(i && i.qty_used) || 0; }
+
+    function isWynnSource(src) {
+      const s = String(src || '').trim().toLowerCase();
+      return s === 'wynn' || s.startsWith('wynn ') || s === 'hepworth';
+    }
+    function isAluSource(src) {
+      const s = String(src || '').trim().toLowerCase();
+      return s === 'alu' || s.startsWith('alu ');
+    }
+    function isFfsSource(src) {
+      const s = String(src || '').trim().toLowerCase();
+      return s === 'ffs' || s.includes('fluid');
+    }
+
+    async function persistSetting(key, value) {
+      try { localStorage.setItem('inv_setting_' + key, value == null ? '' : String(value)); } catch (e) {}
+      if (!supabaseClient) return;
+      try {
+        await supabaseClient.from('app_settings').upsert({ key, value: value == null ? '' : String(value), updated_at: new Date().toISOString() });
+      } catch (e) { /* table optional */ }
+    }
+
+    async function loadSetting(key) {
+      if (supabaseClient) {
+        try {
+          const { data } = await supabaseClient.from('app_settings').select('value').eq('key', key).maybeSingle();
+          if (data && data.value != null && data.value !== '') return data.value;
+        } catch (e) {}
+      }
+      try { return localStorage.getItem('inv_setting_' + key); } catch (e) { return null; }
+    }
+
+    async function loadGlobalFactorInputs() {
+      const wynnEl = document.getElementById('global-wynn-factor');
+      const ffsEl = document.getElementById('global-ffs-factor');
+      if (!wynnEl || !ffsEl) return;
+      const w = await loadSetting('wynn_sell_factor');
+      const f = await loadSetting('ffs_sell_factor');
+      wynnEl.value = (w && parseFloat(w) > 0) ? w : String(storedFactor('GBP') || DEFAULT_GBP_SELL_FACTOR);
+      ffsEl.value = (f && parseFloat(f) > 0) ? f : (storedFactor('EUR') || '');
+      const wv = parseFloat(wynnEl.value);
+      const fv = parseFloat(ffsEl.value);
+      if (isFinite(wv) && wv > 0) persistFactor('GBP', wv);
+      if (isFinite(fv) && fv > 0) persistFactor('EUR', fv);
+      for (const code of ['GBP', 'EUR', 'NOK']) {
+        const saved = await loadSetting(FX_SETTING[code]);
+        const el = document.getElementById(FX_INPUT[code]);
+        const n = (saved && parseFloat(saved) > 0) ? parseFloat(saved) : storedFx(code);
+        if (el && n) { el.value = Number(n).toFixed(4); persistFx(code, n); }
+      }
+      const method = await loadSetting('costing_method');
+      costingMethod = (method === 'lifo') ? 'lifo' : 'fifo';
+      const cm = document.getElementById('costing-method');
+      if (cm) cm.value = costingMethod;
+    }
+
+    async function saveGlobalFactorsOnly() {
+      const w = parseFloat(document.getElementById('global-wynn-factor')?.value);
+      const f = parseFloat(document.getElementById('global-ffs-factor')?.value);
+      if (isFinite(w) && w > 0) {
+        persistFactor('GBP', w);
+        await persistSetting('wynn_sell_factor', w);
+      }
+      if (isFinite(f) && f > 0) {
+        persistFactor('EUR', f);
+        await persistSetting('ffs_sell_factor', f);
+      } else {
+        await persistSetting('ffs_sell_factor', '');
+      }
+      const st = document.getElementById('global-factor-status');
+      if (st) st.textContent = 'Saved.';
+      showStatus('Sell factors saved', 'success');
+    }
+
+    async function applyGlobalFactorsToInventory() {
+      if (!requireUser('applying sell factors')) return;
+      if (!supabaseClient) { showStatus('Not connected', 'error'); return; }
+      if (!hasListPriceColumn) {
+        showStatus('List price column missing — run More tab SQL first', 'error');
+        return;
+      }
+      const w = parseFloat(document.getElementById('global-wynn-factor')?.value);
+      const f = parseFloat(document.getElementById('global-ffs-factor')?.value);
+      if (!(isFinite(w) && w > 0) && !(isFinite(f) && f > 0)) {
+        showStatus('Enter at least one factor', 'error');
+        return;
+      }
+      await saveGlobalFactorsOnly();
+      if (!confirm('Recalculate sell $ on all Wynn/FFS parts that have a list price?\n\nSell rounds up to the next $5. Buy $ is not changed (use Apply buy $ for exchange rates).')) return;
+      let updated = 0, skipped = 0, failed = 0;
+      for (const item of inventory) {
+        let factor = null;
+        if (isWynnSource(item.source) && isFinite(w) && w > 0) factor = w;
+        else if (isFfsSource(item.source) && isFinite(f) && f > 0) factor = f;
+        else { skipped++; continue; }
+        const list = Number(item.list_price);
+        if (!isFinite(list) || list <= 0) { skipped++; continue; }
+        const payload = {
+          sell_price: ceilTo5(list * factor),
+          sell_factor: factor,
+          updated_by: currentUser(),
+          updated_at: new Date().toISOString()
+        };
+        const { error } = await supabaseClient.from('inventory').update(payload).eq('id', item.id);
+        if (error) { failed++; console.warn(error); }
+        else {
+          updated++;
+          await logPriceHistory(item, payload, 'Global sell factor');
+        }
+      }
+      showStatus(`Factors applied: ${updated} updated, ${skipped} skipped, ${failed} failed`, failed ? 'error' : 'success');
+      await loadInventory();
+    }
+
+    async function saveExchangeRatesOnly() {
+      for (const code of ['GBP', 'EUR', 'NOK']) {
+        const n = parseFloat(document.getElementById(FX_INPUT[code])?.value);
+        if (isFinite(n) && n > 0) {
+          persistFx(code, n);
+          await persistSetting(FX_SETTING[code], n);
+        }
+      }
+      const st = document.getElementById('fx-status');
+      if (st) st.textContent = 'Saved.';
+      showStatus('Exchange rates saved', 'success');
+    }
+
+    async function fetchJson(url) {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.json();
+    }
+
+    async function fetchExchangeRates() {
+      const st = document.getElementById('fx-status');
+      if (st) st.textContent = 'Fetching…';
+      try {
+        let table = null;
+        let asOf = '';
+        try {
+          const j = await fetchJson('https://api.frankfurter.dev/v1/latest?base=USD&symbols=GBP,EUR,NOK');
+          table = j && j.rates;
+          asOf = j && j.date ? j.date : '';
+        } catch (e1) {
+          const j = await fetchJson('https://open.er-api.com/v6/latest/USD');
+          table = j && j.rates;
+          asOf = (j && j.time_last_update_utc) ? String(j.time_last_update_utc).slice(0, 16) : '';
+        }
+        if (!table) throw new Error('No rates');
+        let ok = 0;
+        ['GBP', 'EUR', 'NOK'].forEach((code) => {
+          const perUsd = Number(table[code]);
+          const usdEach = (isFinite(perUsd) && perUsd > 0) ? (1 / perUsd) : null;
+          if (usdEach == null) return;
+          const el = document.getElementById(FX_INPUT[code]);
+          if (el) el.value = usdEach.toFixed(4);
+          persistFx(code, usdEach);
+          ok++;
+        });
+        if (!ok) throw new Error('No rates returned');
+        await saveExchangeRatesOnly();
+        if (st) st.textContent = 'Rates updated' + (asOf ? ' (' + asOf + ')' : '') + '. USD per £ / € / kr.';
+      } catch (e) {
+        if (st) st.textContent = 'Could not fetch — enter rates by hand.';
+        showStatus('Rate fetch failed — type them in', 'error');
+      }
+    }
+
+    async function applyExchangeRatesToInventory() {
+      if (!requireUser('applying exchange rates')) return;
+      if (!supabaseClient) { showStatus('Not connected', 'error'); return; }
+      if (!hasListPriceColumn) {
+        showStatus('List price column missing — run More tab SQL first', 'error');
+        return;
+      }
+      await saveExchangeRatesOnly();
+      const gbp = currentFxRate('GBP');
+      const eur = currentFxRate('EUR');
+      const nok = currentFxRate('NOK');
+      if (!gbp && !eur && !nok) {
+        showStatus('Enter or fetch at least one rate', 'error');
+        return;
+      }
+      if (!confirm('Recalculate buy $ on Wynn / FFS / Alu parts that have a list price?\n\nBuy = list × exchange rate − 30%.')) return;
+      let updated = 0, skipped = 0, failed = 0;
+      for (const item of inventory) {
+        const p = pricingProfile(item.source);
+        let fx = null;
+        if (isWynnSource(item.source)) fx = gbp;
+        else if (isFfsSource(item.source)) fx = eur;
+        else if (isAluSource(item.source)) fx = nok;
+        else { skipped++; continue; }
+        const list = Number(item.list_price);
+        const buy = buyFromListFx(list, fx);
+        if (buy == null) { skipped++; continue; }
+        const payload = { buy_price: buy, updated_by: currentUser(), updated_at: new Date().toISOString() };
+        const { error } = await supabaseClient.from('inventory').update(payload).eq('id', item.id);
+        if (error) { failed++; console.warn(error); }
+        else {
+          updated++;
+          await logPriceHistory(item, payload, 'Exchange rate buy');
+        }
+      }
+      showStatus(`Buy $ applied: ${updated} updated, ${skipped} skipped, ${failed} failed`, failed ? 'error' : 'success');
+      await loadInventory();
+    }
+
+    async function saveCostingMethod() {
+      const v = document.getElementById('costing-method')?.value === 'lifo' ? 'lifo' : 'fifo';
+      costingMethod = v;
+      await persistSetting('costing_method', v);
+      const hint = document.getElementById('costing-report-hint');
+      if (hint) hint.textContent = (v === 'lifo' ? 'LIFO' : 'FIFO') + ' — new stock only. Used/salvage is $0.';
+      showStatus('Costing method: ' + v.toUpperCase(), 'success');
+    }
+
+    function currentPricingProfile() {
+      return pricingProfile(document.getElementById('item-source')?.value);
+    }
+
+    function syncPricingUi() {
+      const p = currentPricingProfile();
+      const lab = document.getElementById('item-list-price-label');
+      const flab = document.getElementById('item-sell-factor-label');
+      const factorEl = document.getElementById('item-sell-factor');
+      if (lab) lab.textContent = p.label;
+      if (flab) flab.textContent = p.factorLabel;
+      if (factorEl) {
+        const stored = storedFactor(p.code);
+        if (stored != null) factorEl.value = String(stored);
+        else if (p.defaultFactor != null) factorEl.value = String(p.defaultFactor);
+        else factorEl.value = '';
+      }
+      applySellFromList();
+    }
+
+    function applySellFromList(forceBuy) {
+      const listEl = document.getElementById('item-list-price');
+      const factorEl = document.getElementById('item-sell-factor');
+      const sellEl = document.getElementById('item-sell-price');
+      const hint = document.getElementById('list-price-hint');
+      if (!listEl || !factorEl || !sellEl) return;
+      const p = currentPricingProfile();
+      const list = parseFloat(listEl.value);
+      let factor = parseFloat(factorEl.value);
+      if (isFinite(factor) && factor > 0) persistFactor(p.code, factor);
+      if (!(isFinite(factor) && factor > 0) && p.code === 'USD') factor = 1;
+      let sellTxt = '';
+      if (isFinite(list) && list > 0 && isFinite(factor) && factor > 0) {
+        const usd = ceilTo5(list * factor);
+        sellEl.value = usd.toFixed(2);
+        sellTxt = `${p.symbol}${list.toFixed(2)} × ${factor} → sell <strong>${money(usd)}</strong>.`;
+      }
+      const buyEl = document.getElementById('item-buy-price');
+      const fx = p.usesFx ? currentFxRate(p.code) : null;
+      let buyTxt = '';
+      if (p.usesFx && isFinite(list) && list > 0 && fx && buyEl) {
+        const buy = buyFromListFx(list, fx);
+        if (buy != null && (forceBuy || buyEl.value === '')) buyEl.value = buy.toFixed(2);
+        if (buy != null) buyTxt = ` Buy <strong>${money(buy)}</strong> (rate ${fx} − 30%).`;
+      }
+      if (hint) {
+        if (sellTxt || buyTxt) hint.innerHTML = (sellTxt || '') + buyTxt;
+        else if (p.code === 'GBP') hint.innerHTML = `Wynn: £ × factor → sell. Buy = £ × GBP rate − 30%.`;
+        else if (p.code === 'EUR') hint.innerHTML = `FFS: € × factor → sell. Buy = € × EUR rate − 30%.`;
+        else if (p.code === 'NOK') hint.innerHTML = `Alu: kr × factor → sell. Buy = kr × NOK rate − 30%.`;
+        else hint.innerHTML = `USD: factor 1 copies list to sell (up to $5).`;
+      }
+    }
+
+    function applyGbpSellFactor() { applySellFromList(); }
+    function getGbpSellFactor() {
+      return storedFactor('GBP') || DEFAULT_GBP_SELL_FACTOR;
+    }
+    function currentUser() { return (window.InmarAuth && InmarAuth.currentName()) || sessionUser || ''; }
+    function updateUserUI() {
+      sessionUser = currentUser();
+      const nameEl = document.getElementById('signed-in-name');
+      if (nameEl) nameEl.textContent = sessionUser ? sessionUser : '';
+      const by = document.getElementById('quote-by');
+      if (by && sessionUser) by.value = sessionUser;
+    }
+    function requireUser(actionLabel) {
+      if (currentUser()) return true;
+      showStatus(`Sign in before ${actionLabel || 'making changes'}`, 'error');
+      return false;
+    }
+    try { localStorage.removeItem('inv_user'); } catch (e) {}
+
+    /**
+     * Stable short ID stored in inventory.barcode — never changes when name/part # is edited.
+     * Used as the QR deep-link key (?part=ID) so labels stay valid after renames.
+     */
+    function generateBarcode() {
+      const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      let s = 'IM';
+      if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+        const arr = new Uint8Array(8);
+        crypto.getRandomValues(arr);
+        for (let i = 0; i < 8; i++) s += alphabet[arr[i] % alphabet.length];
+      } else {
+        for (let i = 0; i < 8; i++) s += alphabet[Math.floor(Math.random() * alphabet.length)];
+      }
+      return s;
+    }
+
+    /** Stable key for QR / lookup: DB barcode first, else part_number. */
+    function stablePartKey(item) {
+      if (!item) return '';
+      return String(item.barcode || item.part_number || '').trim();
+    }
+
+    /** App base URL (works on GitHub Pages and local file/server). */
+    function getAppBaseUrl() {
+      const origin = window.location.origin;
+      let path = window.location.pathname || '/';
+      path = path.replace(/index\.html$/i, '');
+      if (!path.endsWith('/')) {
+        const seg = path.split('/').pop() || '';
+        if (seg.includes('.')) path = path.slice(0, path.lastIndexOf('/') + 1);
+        else path = path + '/';
+      }
+      // file:// origin is "null" string in some browsers
+      if (!origin || origin === 'null') {
+        return 'https://kg3924.github.io/parts-inventory/';
+      }
+      return origin + path;
+    }
+
+    /**
+     * Full deep-link URL for labels. Encodes stable DB key so name/PN edits do not break the QR.
+     * Uses short query key `p=` to keep the QR less dense (critical for thermal print).
+     * Phone Camera opens this URL → app loads Scan UI for that part (Commit still required).
+     */
+    function buildPartDeepLink(item) {
+      const key = stablePartKey(item);
+      if (!key) return getAppBaseUrl();
+      // Prefer short param name to reduce QR module count on small labels
+      return getAppBaseUrl() + '?p=' + encodeURIComponent(key);
+    }
+
+    /** Extract part key from plain text or deep-link URL (?p= / ?part= / ?pn=). */
+    function extractPartFromScanPayload(raw) {
+      const s = String(raw || '').trim();
+      if (!s) return '';
+      try {
+        if (/^https?:\/\//i.test(s) || /[?&](p|part|pn)=/i.test(s)) {
+          const u = new URL(s, window.location.href);
+          const p = u.searchParams.get('p') || u.searchParams.get('part') || u.searchParams.get('pn');
+          if (p) return p.trim();
+        }
+      } catch (e) { /* fall through */ }
+      const m = s.match(/[?&](?:p|part|pn)=([^&\s#]+)/i);
+      if (m) {
+        try { return decodeURIComponent(m[1]).trim(); } catch (e2) { return m[1].trim(); }
+      }
+      return s;
+    }
+
+    function findInventoryByKey(key) {
+      const k = String(key || '').trim().toLowerCase();
+      if (!k) return null;
+      return inventory.find(i =>
+        (i.barcode || '').toLowerCase() === k ||
+        (i.part_number || '').toLowerCase() === k
+      ) || null;
+    }
+
+    function compactAlnum(s) {
+      return String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    }
+    function digitsOnly(s) {
+      return String(s || '').replace(/\D/g, '');
+    }
+
+    /** Partial name / part # search for typed Scan lookup (not camera). */
+    function itemMatchesQuery(item, raw) {
+      const q = String(raw || '').trim();
+      if (!q) return false;
+      const ql = q.toLowerCase();
+      const name = (item.name || '').toLowerCase();
+      const pn = (item.part_number || '').toLowerCase();
+      const bc = (item.barcode || '').toLowerCase();
+      if (name.includes(ql) || pn.includes(ql) || bc.includes(ql)) return true;
+      const qc = compactAlnum(q);
+      if (qc.length >= 2) {
+        if (compactAlnum(item.part_number).includes(qc) || compactAlnum(item.barcode).includes(qc)) return true;
+      }
+      const qd = digitsOnly(q);
+      if (qd.length >= 3 && digitsOnly(item.part_number).includes(qd)) return true;
+      return false;
+    }
+
+    function searchInventoryMatches(raw) {
+      const q = String(raw || '').trim();
+      if (!q) return [];
+      const ql = q.toLowerCase();
+      const qc = compactAlnum(q);
+      const scored = [];
+      inventory.forEach(i => {
+        if (!itemMatchesQuery(i, q)) return;
+        const pn = (i.part_number || '').toLowerCase();
+        const name = (i.name || '').toLowerCase();
+        let score = 10;
+        if (pn === ql || (i.barcode || '').toLowerCase() === ql) score = 100;
+        else if (pn.startsWith(ql)) score = 80;
+        else if (compactAlnum(i.part_number) === qc) score = 75;
+        else if (name.startsWith(ql)) score = 60;
+        else if (name.includes(ql)) score = 40;
+        scored.push({ item: i, score });
+      });
+      scored.sort((a, b) => b.score - a.score || String(a.item.name || '').localeCompare(b.item.name || ''));
+      return scored.map(s => s.item);
+    }
+
+    /**
+     * QR options tuned for thermal + laser paper.
+     * Screen is forgiving; print blurs small modules — need big modules, quiet zone, pure black.
+     */
+    const QR_PRINT_OPTS = {
+      margin: 3,
+      errorCorrectionLevel: 'H',
+      color: { dark: '#000000', light: '#ffffff' }
+    };
+
+    async function renderQrToCanvas(canvasOrId, text, px) {
+      const el = typeof canvasOrId === 'string' ? document.getElementById(canvasOrId) : canvasOrId;
+      if (!el || !text || typeof QRCode === 'undefined') return;
+      const size = px || 140;
+      // Preserve CSS box size — QRCode.toCanvas overwrites width/height attributes and can
+      // make the canvas paint at full pixel size if style is lost.
+      const cssW = el.style.width || el.getAttribute('data-css-w') || '';
+      const cssH = el.style.height || el.getAttribute('data-css-h') || '';
+      try {
+        await QRCode.toCanvas(el, text, Object.assign({ width: size }, QR_PRINT_OPTS));
+        if (cssW) el.style.width = cssW;
+        if (cssH) el.style.height = cssH;
+        el.style.maxWidth = cssW || '100%';
+        el.style.maxHeight = cssH || '100%';
+        el.style.display = 'block';
+        el.style.imageRendering = 'pixelated';
+        el.style.imageRendering = 'crisp-edges';
+      } catch (e) {
+        console.warn('QR render failed', e);
+      }
+    }
+
+    /**
+     * High-res PNG data URL for print windows.
+     * Thermal drivers often rasterize SVG poorly; PNG modules stay solid black.
+     */
+    async function qrToPrintDataUrl(text, px) {
+      if (!text || typeof QRCode === 'undefined') return '';
+      try {
+        // Over-sample (e.g. 320px) so each module is many pixels before printer downscales
+        return await QRCode.toDataURL(text, Object.assign({ width: px || 320 }, QR_PRINT_OPTS));
+      } catch (e) {
+        console.warn('QR PNG failed', e);
+        return '';
+      }
+    }
+
+    async function logAdjustment({ inventory_id, part_number, name, action, qty_before, qty_after, details }) {
+      if (!supabaseClient || !hasAdjustmentsTable) return;
+      try {
+        const { error } = await supabaseClient.from('inventory_adjustments').insert({
+          inventory_id: inventory_id || null,
+          part_number: part_number || null,
+          name: name || null,
+          action,
+          qty_before: qty_before != null ? qty_before : null,
+          qty_after: qty_after != null ? qty_after : null,
+          changed_by: currentUser() || null,
+          details: details || null
+        });
+        if (error) {
+          if (/relation|does not exist|schema cache/i.test(error.message || '')) {
+            hasAdjustmentsTable = false;
+          } else {
+            console.warn('Adjustment log failed', error);
+          }
+        }
+      } catch (e) {
+        console.warn('Adjustment log error', e);
+      }
+    }
+
+    async function logPriceHistory(item, payload, note) {
+      if (!supabaseClient || !hasPriceHistoryTable) return;
+      const buy = payload.buy_price != null ? Number(payload.buy_price) : (item && item.buy_price != null ? Number(item.buy_price) : null);
+      const sell = payload.sell_price != null ? Number(payload.sell_price) : (item && item.sell_price != null ? Number(item.sell_price) : null);
+      const list = payload.list_price != null ? Number(payload.list_price) : (item && item.list_price != null ? Number(item.list_price) : null);
+      const prevBuy = item && item.buy_price != null ? Number(item.buy_price) : null;
+      const prevSell = item && item.sell_price != null ? Number(item.sell_price) : null;
+      const prevList = item && item.list_price != null ? Number(item.list_price) : null;
+      if (buy === prevBuy && sell === prevSell && list === prevList && note !== 'Created') return;
+      try {
+        const { error } = await supabaseClient.from('inventory_price_history').insert({
+          inventory_id: item && item.id ? item.id : (payload.inventory_id || null),
+          part_number: (item && item.part_number) || payload.part_number || null,
+          name: (item && item.name) || payload.name || null,
+          buy_price: buy,
+          sell_price: sell,
+          list_price: list,
+          list_currency: payload.list_currency || (item && item.list_currency) || null,
+          qty: payload.qty != null ? payload.qty : (item ? item.qty : null),
+          qty_used: payload.qty_used != null ? payload.qty_used : (item ? qtyUsedOf(item) : null),
+          note: note || null,
+          changed_by: currentUser() || null
+        });
+        if (error && /relation|does not exist|schema cache/i.test(error.message || '')) hasPriceHistoryTable = false;
+      } catch (e) { /* optional table */ }
+    }
+
+    async function addCostLayer({ inventory_id, part_number, unit_cost, qty, condition, source }) {
+      if (!supabaseClient || !hasCostLayersTable) return;
+      const n = Number(qty);
+      if (!isFinite(n) || n <= 0) return;
+      const cost = condition === 'used' ? 0 : (Number(unit_cost) || 0);
+      try {
+        const { error } = await supabaseClient.from('inventory_cost_layers').insert({
+          inventory_id: inventory_id || null,
+          part_number: part_number || null,
+          unit_cost: cost,
+          qty_original: n,
+          qty_remaining: n,
+          condition: condition === 'used' ? 'used' : 'new',
+          source: source || null,
+          changed_by: currentUser() || null
+        });
+        if (error && /relation|does not exist|schema cache/i.test(error.message || '')) hasCostLayersTable = false;
+      } catch (e) { /* optional */ }
+    }
+
+    async function consumeCostLayers(inventory_id, qty, condition) {
+      if (!supabaseClient || !hasCostLayersTable) return;
+      const need = Number(qty);
+      if (!isFinite(need) || need <= 0) return;
+      const cond = condition === 'used' ? 'used' : 'new';
+      const ascending = costingMethod !== 'lifo';
+      try {
+        const { data, error } = await supabaseClient.from('inventory_cost_layers')
+          .select('id,qty_remaining,acquired_at')
+          .eq('inventory_id', inventory_id)
+          .eq('condition', cond)
+          .gt('qty_remaining', 0)
+          .order('acquired_at', { ascending });
+        if (error) {
+          if (/relation|does not exist|schema cache/i.test(error.message || '')) hasCostLayersTable = false;
+          return;
+        }
+        let left = need;
+        for (const layer of (data || [])) {
+          if (left <= 0) break;
+          const have = Number(layer.qty_remaining) || 0;
+          const take = Math.min(have, left);
+          await supabaseClient.from('inventory_cost_layers')
+            .update({ qty_remaining: have - take })
+            .eq('id', layer.id);
+          left -= take;
+        }
+      } catch (e) { /* optional */ }
+    }
+
+    async function applyQtyDeltaToLayers({ id, part_number, buy_price, delta, condition, source }) {
+      const d = Number(delta);
+      if (!isFinite(d) || d === 0) return;
+      if (d > 0) {
+        await addCostLayer({ inventory_id: id, part_number, unit_cost: condition === 'used' ? 0 : buy_price, qty: d, condition, source });
+      } else {
+        await consumeCostLayers(id, -d, condition);
+      }
+    }
+
+    async function ensureBarcodes(items) {
+      if (!hasBarcodeColumn || !supabaseClient || !items?.length) return items;
+      let changed = false;
+      for (const item of items) {
+        if (item.barcode) continue;
+        const code = generateBarcode();
+        const { error } = await supabaseClient.from('inventory')
+          .update({ barcode: code })
+          .eq('id', item.id);
+        if (!error) {
+          item.barcode = code;
+          changed = true;
+        } else if (/barcode|column/i.test(error.message || '')) {
+          hasBarcodeColumn = false;
+          break;
+        }
+      }
+      return items;
+    }
+
+    document.querySelectorAll('.tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById(btn.dataset.tab).classList.add('active');
+        if (btn.dataset.tab === 'labels') populateLabelSelect();
+        if (btn.dataset.tab === 'reports') renderReports();
+        if (btn.dataset.tab !== 'scan') stopScanner();
+      });
+    });
+
+    function toggleOrderFields() {
+      document.getElementById('order-fields').style.display =
+        document.getElementById('item-open-order').checked ? 'block' : 'none';
+    }
+
+    async function loadInventory() {
+      if (!supabaseClient) {
+        document.getElementById('conn-status').textContent = 'Not configured – paste keys in the HTML file.';
+        return;
+      }
+      const { data, error } = await supabaseClient.from('inventory').select('*').order('name');
+      if (error) {
+        console.error(error);
+        document.getElementById('conn-status').textContent = 'Error: ' + error.message;
+        showStatus('Load failed: ' + error.message, 'error');
+        return;
+      }
+      inventory = data || [];
+      if (inventory.length > 0) {
+        const row0 = inventory[0];
+        hasCategoryColumn = Object.prototype.hasOwnProperty.call(row0, 'category');
+        hasBarcodeColumn = Object.prototype.hasOwnProperty.call(row0, 'barcode');
+        hasExcludeValueColumn = Object.prototype.hasOwnProperty.call(row0, 'exclude_from_valuation');
+        hasListPriceColumn = Object.prototype.hasOwnProperty.call(row0, 'list_price');
+        hasQtyUsedColumn = Object.prototype.hasOwnProperty.call(row0, 'qty_used');
+      } else {
+        const probeCat = await supabaseClient.from('inventory').select('category').limit(1);
+        hasCategoryColumn = !probeCat.error;
+        const probeBc = await supabaseClient.from('inventory').select('barcode').limit(1);
+        hasBarcodeColumn = !probeBc.error;
+        const probeEx = await supabaseClient.from('inventory').select('exclude_from_valuation').limit(1);
+        hasExcludeValueColumn = !probeEx.error;
+        const probeLp = await supabaseClient.from('inventory').select('list_price').limit(1);
+        hasListPriceColumn = !probeLp.error;
+        const probeUsed = await supabaseClient.from('inventory').select('qty_used').limit(1);
+        hasQtyUsedColumn = !probeUsed.error;
+      }
+      // Probe adjustments table
+      const probeAdj = await supabaseClient.from('inventory_adjustments').select('id').limit(1);
+      hasAdjustmentsTable = !probeAdj.error;
+      const probeQuotes = await supabaseClient.from('quotes').select('id').limit(1);
+      hasQuotesTables = !probeQuotes.error;
+      const probePhase2 = await supabaseClient.from('app_settings').select('key').limit(1);
+      hasPhase2Tables = !probePhase2.error;
+      const probeHist = await supabaseClient.from('inventory_price_history').select('id').limit(1);
+      hasPriceHistoryTable = !probeHist.error;
+      const probeLayers = await supabaseClient.from('inventory_cost_layers').select('id').limit(1);
+      hasCostLayersTable = !probeLayers.error;
+
+      // Backfill stable barcodes when column exists
+      if (hasBarcodeColumn) {
+        await ensureBarcodes(inventory);
+      }
+
+      const schemaEl = document.getElementById('schema-status');
+      if (schemaEl) {
+        const bits = [];
+        bits.push(hasCategoryColumn ? 'category ✓' : 'category missing');
+        bits.push(hasBarcodeColumn ? 'barcode ✓' : 'barcode missing');
+        bits.push(hasAdjustmentsTable ? 'adjustments ✓' : 'adjustments missing');
+        bits.push(hasQuotesTables ? 'quotes ✓' : 'quotes missing');
+        bits.push(hasPhase2Tables ? 'docs/factors ✓' : 'docs/factors missing');
+        bits.push(hasExcludeValueColumn ? 'exclude-value ✓' : 'exclude-value missing');
+        bits.push(hasListPriceColumn ? 'list-price ✓' : 'list-price missing');
+        bits.push(hasQtyUsedColumn ? 'used-qty ✓' : 'used-qty missing');
+        bits.push(hasPriceHistoryTable ? 'price-history ✓' : 'price-history missing');
+        bits.push(hasCostLayersTable ? 'cost-layers ✓' : 'cost-layers missing');
+        const schemaOk = hasCategoryColumn && hasBarcodeColumn && hasAdjustmentsTable && hasQuotesTables && hasPhase2Tables;
+        schemaEl.textContent = 'Schema: ' + bits.join(' · ') + (schemaOk ? '' : ' — run SQL in More tab');
+        schemaEl.style.color = schemaOk ? 'var(--success)' : 'var(--warning)';
+      }
+      document.getElementById('conn-status').textContent = 'Connected ✓  ' + inventory.length + ' parts. Realtime active.';
+      refreshSuggestionLists();
+      renderAll();
+    }
+
+    function refreshSuggestionLists() {
+      /* Combos read live from inventory + defaults */
+    }
+
+    function comboValues(kind) {
+      const set = new Set();
+      if (kind === 'source') DEFAULT_SOURCES.forEach(s => set.add(s));
+      if (kind === 'category') DEFAULT_CATEGORIES.forEach(s => set.add(s));
+      inventory.forEach(i => {
+        if (kind === 'source' && i.source) set.add(String(i.source).trim());
+        if (kind === 'category' && i.category) set.add(String(i.category).trim());
+        if (kind === 'location' && i.location) set.add(String(i.location).trim());
+      });
+      return [...set].filter(Boolean).sort((a, b) => a.localeCompare(b));
+    }
+
+    function comboInputId(kind) {
+      return kind === 'source' ? 'item-source' : kind === 'category' ? 'item-category' : 'item-location';
+    }
+
+    function closeAllCombos() {
+      document.querySelectorAll('.combo-menu').forEach(m => m.classList.remove('open'));
+    }
+
+    function toggleCombo(kind) {
+      const menu = document.getElementById('combo-' + kind);
+      if (!menu) return;
+      const open = menu.classList.contains('open');
+      closeAllCombos();
+      if (!open) {
+        renderComboMenu(kind, true);
+        menu.classList.add('open');
+      }
+    }
+
+    function filterCombo(kind) {
+      renderComboMenu(kind, false);
+      const menu = document.getElementById('combo-' + kind);
+      if (menu) menu.classList.add('open');
+    }
+
+    function pickCombo(kind, value) {
+      const inp = document.getElementById(comboInputId(kind));
+      if (inp) inp.value = value;
+      closeAllCombos();
+      if (kind === 'source') syncPricingUi();
+    }
+
+    function canonicalComboValue(kind, typed) {
+      const t = String(typed || '').trim();
+      if (!t) return '';
+      const hit = comboValues(kind).find(v => v.toLowerCase() === t.toLowerCase());
+      return hit || t;
+    }
+
+    function renderComboMenu(kind, showAll) {
+      const menu = document.getElementById('combo-' + kind);
+      const inp = document.getElementById(comboInputId(kind));
+      if (!menu || !inp) return;
+      const q = (inp.value || '').trim().toLowerCase();
+      const all = comboValues(kind);
+      const matches = showAll || !q ? all : all.filter(v => v.toLowerCase().includes(q));
+      const exact = q && all.find(v => v.toLowerCase() === q);
+      const starts = q ? all.filter(v => v.toLowerCase().startsWith(q) && v.toLowerCase() !== q) : [];
+      const rest = matches.filter(v => v.toLowerCase() !== q && !starts.includes(v));
+      const ordered = exact ? [exact, ...starts, ...rest.filter(v => v !== exact)] : [...starts, ...rest];
+      let html = '';
+      if (!ordered.length && !q) {
+        html = '<div class="combo-empty">No saved values yet</div>';
+      } else {
+        ordered.slice(0, 80).forEach((v, i) => {
+          const cls = (exact && v === exact) ? 'combo-opt exact' : 'combo-opt';
+          html += `<button type="button" class="${cls}${i===0?' active':''}" onclick="pickCombo('${kind}', this.dataset.v)" data-v="${escapeHtml(v)}">${escapeHtml(v)}</button>`;
+        });
+        if (q && !exact) {
+          html += `<button type="button" class="combo-opt new" onclick="pickCombo('${kind}', this.dataset.v)" data-v="${escapeHtml(inp.value.trim())}">Keep “${escapeHtml(inp.value.trim())}” (new)</button>`;
+        }
+      }
+      menu.innerHTML = html;
+    }
+
+    function bindCombos() {
+      ['source', 'category', 'location'].forEach(kind => {
+        const inp = document.getElementById(comboInputId(kind));
+        if (!inp || inp.dataset.comboBound) return;
+        inp.dataset.comboBound = '1';
+        inp.addEventListener('focus', () => {
+          renderComboMenu(kind, !(inp.value || '').trim());
+          const menu = document.getElementById('combo-' + kind);
+          if (menu) menu.classList.add('open');
+        });
+        inp.addEventListener('blur', () => {
+          setTimeout(() => {
+            inp.value = canonicalComboValue(kind, inp.value);
+            if (kind === 'source') syncPricingUi();
+          }, 180);
+        });
+        inp.addEventListener('keydown', (e) => {
+          const menu = document.getElementById('combo-' + kind);
+          if (!menu || !menu.classList.contains('open')) {
+            if (e.key === 'ArrowDown') { e.preventDefault(); toggleCombo(kind); }
+            return;
+          }
+          const opts = [...menu.querySelectorAll('.combo-opt')];
+          const idx = opts.findIndex(o => o.classList.contains('active'));
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            const n = opts[Math.min(opts.length - 1, idx + 1)] || opts[0];
+            opts.forEach(o => o.classList.remove('active'));
+            if (n) { n.classList.add('active'); n.scrollIntoView({ block: 'nearest' }); }
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            const n = opts[Math.max(0, idx - 1)] || opts[0];
+            opts.forEach(o => o.classList.remove('active'));
+            if (n) { n.classList.add('active'); n.scrollIntoView({ block: 'nearest' }); }
+          } else if (e.key === 'Enter') {
+            const n = opts.find(o => o.classList.contains('active')) || opts[0];
+            if (n) { e.preventDefault(); pickCombo(kind, n.dataset.v); }
+          } else if (e.key === 'Escape') {
+            closeAllCombos();
+          }
+        });
+      });
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('.combo')) closeAllCombos();
+      });
+    }
+
+    function copyCategorySql() {
+      const sql = document.getElementById('category-sql')?.textContent || '';
+      navigator.clipboard.writeText(sql).then(
+        () => showStatus('SQL copied — paste in Supabase SQL Editor', 'success'),
+        () => showStatus('Copy failed — select the SQL manually', 'error')
+      );
+    }
+
+    function subscribeRealtime() {
+      if (!supabaseClient) return;
+      supabaseClient.channel('inventory-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, () => loadInventory())
+        .subscribe();
+    }
+
+    function isExcludedFromValue(i) {
+      return !!(i && (i.exclude_from_valuation === true || i.exclude_from_valuation === 'true'));
+    }
+
+    function calcTotals() {
+      let cost = 0, sell = 0, units = 0, usedUnits = 0, needsDate = 0, excluded = 0, excludedUnits = 0;
+      inventory.forEach(i => {
+        const q = i.qty || 0;
+        const u = qtyUsedOf(i);
+        units += q + u;
+        usedUnits += u;
+        if (isExcludedFromValue(i)) {
+          excluded++;
+          excludedUnits += q;
+        } else {
+          cost += q * (Number(i.buy_price) || 0);
+          sell += q * (Number(i.sell_price) || 0);
+        }
+        if (i.open_order && !i.estimated_delivery) needsDate++;
+      });
+      return { cost, sell, margin: sell - cost, units, usedUnits, needsDate, excluded, excludedUnits };
+    }
+
+    function renderAll() {
+      renderStats();
+      renderValueSummary();
+      renderSourceFilters();
+      renderCategoryFilters();
+      renderTable();
+      populateLabelSelect();
+    }
+
+    function renderStats() {
+      const total = inventory.length;
+      const units = inventory.reduce((s, i) => s + (i.qty || 0) + qtyUsedOf(i), 0);
+      const low = inventory.filter(i => isLowStock(i)).length;
+      const open = inventory.filter(i => i.open_order).length;
+      const out = inventory.filter(i => (i.qty || 0) <= 0).length;
+      document.getElementById('stats').innerHTML = `
+        <div class="stat ${homeAttentionFilter === null ? 'active-filter' : ''}" onclick="setHomeFilter(null)" title="Show all parts">
+          <div class="stat-value">${total}</div><div class="stat-label">Parts</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value">${units}</div><div class="stat-label">Units</div>
+        </div>
+        <div class="stat clickable ${homeAttentionFilter === 'low' ? 'active-filter' : ''}" onclick="setHomeFilter('low')" title="Filter low stock">
+          <div class="stat-value" style="color:var(--warning)">${low}</div><div class="stat-label">Low</div>
+        </div>
+        <div class="stat clickable ${homeAttentionFilter === 'open_order' ? 'active-filter' : ''}" onclick="setHomeFilter('open_order')" title="Filter open orders">
+          <div class="stat-value" style="color:var(--open-order)">${open}</div><div class="stat-label">Open Orders</div>
+        </div>
+      `;
+      // keep out count available for needs date card; unused in stats grid intentionally
+      void out;
+    }
+
+    function renderValueSummary() {
+      const t = calcTotals();
+      document.getElementById('value-summary').innerHTML = `
+        <div class="value-card"><div class="label">Inventory at Cost</div><div class="amount">${money(t.cost)}</div>${t.excluded ? `<div style="font-size:0.68rem;color:var(--muted);margin-top:0.2rem;">${t.excluded} part${t.excluded===1?'':'s'} excluded</div>` : ''}</div>
+        <div class="value-card"><div class="label">At Sell Price</div><div class="amount">${money(t.sell)}</div></div>
+        <div class="value-card"><div class="label">Potential Margin</div><div class="amount" style="color:var(--success)">${money(t.margin)}</div></div>
+        ${t.needsDate ? `<div class="value-card clickable ${homeAttentionFilter === 'needs_date' ? 'active-filter' : ''}" onclick="setHomeFilter('needs_date')" title="Filter items needing delivery date"><div class="label">Needs Delivery Date</div><div class="amount" style="color:var(--danger)">${t.needsDate}</div></div>` : ''}
+      `;
+    }
+
+    function setHomeFilter(mode) {
+      homeAttentionFilter = (homeAttentionFilter === mode) ? null : mode;
+      const bar = document.getElementById('home-filter-bar');
+      const label = document.getElementById('home-filter-label');
+      const labels = {
+        open_order: 'Showing: Open orders',
+        needs_date: 'Showing: Needs delivery date',
+        out: 'Showing: Out of stock',
+        low: 'Showing: Low stock'
+      };
+      if (homeAttentionFilter && bar && label) {
+        bar.classList.add('show');
+        label.textContent = labels[homeAttentionFilter] || 'Filtered';
+      } else if (bar) {
+        bar.classList.remove('show');
+        if (label) label.textContent = '';
+      }
+      renderStats();
+      renderValueSummary();
+      renderTable();
+    }
+
+    function clearHomeFilter() {
+      homeAttentionFilter = null;
+      const bar = document.getElementById('home-filter-bar');
+      if (bar) bar.classList.remove('show');
+      renderStats();
+      renderValueSummary();
+      renderTable();
+    }
+
+    function matchesHomeAttention(i) {
+      if (!homeAttentionFilter) return true;
+      if (homeAttentionFilter === 'open_order') return !!i.open_order;
+      if (homeAttentionFilter === 'needs_date') return !!(i.open_order && !i.estimated_delivery);
+      if (homeAttentionFilter === 'out') return ((i.qty || 0) + qtyUsedOf(i)) <= 0;
+      if (homeAttentionFilter === 'low') return isLowStock(i);
+      return true;
+    }
+
+    function chipList(values, active, setterName, extraClass) {
+      return values.map(s => {
+        const safe = String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        return `<button type="button" class="filter-chip ${extraClass || ''} ${active === s ? 'active' : ''}" onclick="${setterName}('${safe}')">${escapeHtml(s)}</button>`;
+      }).join('');
+    }
+
+    function renderSourceFilters() {
+      const sources = ['All', ...new Set(inventory.map(i => i.source || 'Unspecified').filter(Boolean))].sort((a,b) => {
+        if (a === 'All') return -1;
+        if (b === 'All') return 1;
+        return a.localeCompare(b);
+      });
+      const el = document.getElementById('source-filters');
+      if (!el) return;
+      el.innerHTML = chipList(sources, activeSourceFilter, 'setSourceFilter', '');
+    }
+
+    function renderCategoryFilters() {
+      const cats = ['All', ...new Set(inventory.map(i => i.category || 'Uncategorized').filter(Boolean))].sort((a,b) => {
+        if (a === 'All') return -1;
+        if (b === 'All') return 1;
+        return a.localeCompare(b);
+      });
+      const el = document.getElementById('category-filters');
+      if (!el) return;
+      // Hide category row content if nothing has categories yet (except All)
+      el.innerHTML = chipList(cats, activeCategoryFilter, 'setCategoryFilter', 'cat-chip');
+    }
+
+    function setSourceFilter(src) {
+      activeSourceFilter = src;
+      renderSourceFilters();
+      renderTable();
+    }
+
+    function setCategoryFilter(cat) {
+      activeCategoryFilter = cat;
+      renderCategoryFilters();
+      renderTable();
+    }
+
+    function renderTable() {
+      const q = (document.getElementById('search')?.value || '').toLowerCase();
+      const filtered = inventory.filter(i => {
+        const matchSearch = !q ||
+          (i.name || '').toLowerCase().includes(q) ||
+          (i.part_number || '').toLowerCase().includes(q) ||
+          (i.barcode || '').toLowerCase().includes(q) ||
+          (i.source || '').toLowerCase().includes(q) ||
+          (i.category || '').toLowerCase().includes(q) ||
+          (i.location || '').toLowerCase().includes(q) ||
+          (i.notes || '').toLowerCase().includes(q);
+        const src = i.source || 'Unspecified';
+        const cat = i.category || 'Uncategorized';
+        const matchSource = activeSourceFilter === 'All' || src === activeSourceFilter;
+        const matchCat = activeCategoryFilter === 'All' || cat === activeCategoryFilter;
+        return matchSearch && matchSource && matchCat && matchesHomeAttention(i);
+      });
+      const tbody = document.getElementById('inventory-body');
+      const empty = document.getElementById('empty-msg');
+      if (filtered.length === 0) {
+        tbody.innerHTML = '';
+        empty.style.display = 'block';
+        if (inventory.length === 0) {
+          empty.textContent = 'No parts yet. Import clean JSON or add a part.';
+        } else if (homeAttentionFilter || activeSourceFilter !== 'All' || activeCategoryFilter !== 'All') {
+          empty.textContent = 'No parts match the current filters.';
+        } else {
+          empty.textContent = 'No matching parts.';
+        }
+        return;
+      }
+      empty.style.display = 'none';
+      tbody.innerHTML = filtered.map(i => {
+        const used = qtyUsedOf(i);
+        const qtyClass = ((i.qty || 0) + used) <= 0 ? 'out' : (isLowStock(i) ? 'low' : '');
+        const excluded = isExcludedFromValue(i);
+        const costVal = (i.qty || 0) * (Number(i.buy_price) || 0);
+        const badges = [];
+        if (i.open_order) {
+          badges.push(`<span class="badge open-order">Open Order</span>`);
+          if (!i.estimated_delivery) badges.push(`<span class="badge needs-date">Needs Delivery Date</span>`);
+          else badges.push(`<span class="badge open-order">ETA ${i.estimated_delivery}</span>`);
+        }
+        if (isLowStock(i)) badges.push(`<span class="badge low">Low</span>`);
+        if (used) badges.push(`<span class="badge used">Used ${used}</span>`);
+        if (excluded) badges.push(`<span class="badge not-valued">Not valued</span>`);
+        const meta = [];
+        if (i.source) meta.push(`<span class="badge source-tag">${escapeHtml(i.source)}</span>`);
+        if (i.category) meta.push(`<span class="badge category">${escapeHtml(i.category)}</span>`);
+        return `<tr>
+          <td>
+            <strong>${escapeHtml(i.name)}</strong><br>
+            <code style="font-size:0.75rem;color:var(--muted)">${escapeHtml(i.part_number)}</code>
+            ${meta.length ? `<div class="meta-line">${meta.join('')}</div>` : ''}
+            ${i.location ? '<small style="color:var(--muted)">' + escapeHtml(i.location) + '</small>' : ''}
+          </td>
+          <td class="qty ${qtyClass}">${i.qty || 0}${used ? `<br><small style="color:var(--muted);font-weight:400">used ${used}</small>` : ''}</td>
+          <td style="font-size:0.8rem;">
+            ${excluded
+              ? `<span style="color:var(--muted)">Not valued</span>${i.buy_price != null ? '<br><small style="color:var(--muted)">cost ' + money(i.buy_price) + '</small>' : ''}`
+              : `${i.buy_price != null ? money(costVal) : '—'}${i.buy_price != null ? '<br><small style="color:var(--muted)">@ ' + money(i.buy_price) + '</small>' : ''}`}
+          </td>
+          <td>${badges.join('') || '—'}</td>
+          <td class="actions">
+            <button type="button" class="adjust-btn" onclick="adjustItem('${i.id}')">Adjust</button>
+            <button class="secondary" onclick="quickAdjust('${i.id}', 1)">+</button>
+            <button class="secondary" onclick="quickAdjust('${i.id}', -1)">−</button>
+            <button class="quote-btn" onclick="addToQuote('${i.id}')">Quote</button>
+            <button class="secondary" onclick="editItem('${i.id}')">Edit</button>
+            <button class="danger" onclick="deleteItem('${i.id}', '${escapeHtml(i.part_number)}')">Del</button>
+          </td>
+        </tr>`;
+      }).join('');
+    }
+
+    async function deleteItem(id, partNumber) {
+      if (!requireUser('deleting parts')) return;
+      if (!confirm(`Delete part “${partNumber}” permanently?\n\nThis cannot be undone.`)) return;
+      if (!supabaseClient) return;
+      const item = inventory.find(i => i.id === id);
+      const { error } = await supabaseClient.from('inventory').delete().eq('id', id);
+      if (error) {
+        showStatus('Delete failed: ' + error.message, 'error');
+        return;
+      }
+      await logAdjustment({
+        inventory_id: id,
+        part_number: partNumber,
+        name: item?.name,
+        action: 'delete',
+        qty_before: item?.qty,
+        qty_after: null,
+        details: 'Part deleted'
+      });
+      showStatus(`Part deleted by ${currentUser()}`, 'success');
+      await loadInventory();
+    }
+
+    async function clearAllInventory() {
+      if (!requireUser('clearing inventory')) return;
+      if (!supabaseClient) return;
+      const n = inventory.length;
+      if (n === 0) {
+        showStatus('Inventory is already empty', 'info');
+        return;
+      }
+      if (!confirm(`Delete ALL ${n} parts from Supabase?\n\nExport a backup first if you need one.\n\nThis cannot be undone.`)) return;
+      const typed = prompt('Type DELETE ALL to confirm wiping the entire inventory:');
+      if (typed !== 'DELETE ALL') {
+        showStatus('Clear cancelled', 'info');
+        return;
+      }
+      // PostgREST requires a filter for DELETE — match all rows
+      const { error, count } = await supabaseClient
+        .from('inventory')
+        .delete({ count: 'exact' })
+        .not('id', 'is', null);
+      if (error) {
+        showStatus('Clear failed: ' + error.message, 'error');
+        return;
+      }
+      showStatus(`Cleared inventory (${count != null ? count : n} rows) — by ${currentUser()}`, 'success');
+      activeSourceFilter = 'All';
+      activeCategoryFilter = 'All';
+      await loadInventory();
+    }
+
+    function renderReports() {
+      const t = calcTotals();
+      document.getElementById('report-values').innerHTML = `
+        <div class="value-card">
+          <div class="label">Total Inventory at Cost</div>
+          <div class="amount">${money(t.cost)}</div>
+          <div style="font-size:0.7rem;color:var(--muted);margin-top:0.25rem;">New qty × buy. Used/salvage excluded.${t.excluded ? ` · ${t.excluded} SKUs excluded` : ''}${t.usedUnits ? ` · ${t.usedUnits} used` : ''}</div>
+        </div>
+        <div class="value-card">
+          <div class="label">Total at Sell Price</div>
+          <div class="amount">${money(t.sell)}</div>
+          <div style="font-size:0.7rem;color:var(--muted);margin-top:0.25rem;">Potential revenue at list price</div>
+        </div>
+        <div class="value-card">
+          <div class="label">Potential Gross Margin</div>
+          <div class="amount" style="color:var(--success)">${money(t.margin)}</div>
+          <div style="font-size:0.7rem;color:var(--muted);margin-top:0.25rem;">Sell value − Cost value</div>
+        </div>
+        <div class="value-card">
+          <div class="label">Units on Hand</div>
+          <div class="amount">${t.units}</div>
+        </div>
+      `;
+      renderAttentionFilters();
+      renderAttentionList();
+    }
+
+    function renderAttentionFilters() {
+      const el = document.getElementById('attention-filters');
+      if (!el) return;
+      const chips = [
+        { id: 'all', label: 'All' },
+        { id: 'out', label: 'Out of Stock' },
+        { id: 'needs_date', label: 'Needs Delivery Date' },
+        { id: 'low', label: 'Low Stock' },
+        { id: 'open_order', label: 'Open Orders' }
+      ];
+      el.innerHTML = chips.map(c =>
+        `<button type="button" class="filter-chip att-chip ${attentionFilter === c.id ? 'active' : ''}" onclick="setAttentionFilter('${c.id}')">${c.label}</button>`
+      ).join('');
+    }
+
+    function setAttentionFilter(id) {
+      attentionFilter = id;
+      renderAttentionFilters();
+      renderAttentionList();
+    }
+
+    function renderAttentionList() {
+      let attention = inventory.filter(i =>
+        (i.open_order && !i.estimated_delivery) ||
+        isLowStock(i) ||
+        !!i.open_order
+      );
+      if (attentionFilter === 'out') {
+        attention = inventory.filter(i => ((i.qty || 0) + qtyUsedOf(i)) <= 0);
+      } else if (attentionFilter === 'needs_date') {
+        attention = inventory.filter(i => i.open_order && !i.estimated_delivery);
+      } else if (attentionFilter === 'low') {
+        attention = inventory.filter(i => isLowStock(i));
+      } else if (attentionFilter === 'open_order') {
+        attention = inventory.filter(i => !!i.open_order);
+      } else {
+        attention = inventory.filter(i =>
+          (i.open_order && !i.estimated_delivery) ||
+          isLowStock(i)
+        );
+      }
+
+      if (attention.length === 0) {
+        document.getElementById('attention-list').innerHTML = '<p style="color:var(--muted);">Nothing matches this filter.</p>';
+      } else {
+        document.getElementById('attention-list').innerHTML = `
+          <table>
+            <thead><tr><th>Part</th><th>Issue</th><th></th></tr></thead>
+            <tbody>
+              ${attention.map(i => {
+                let issue = [];
+                if (i.open_order && !i.estimated_delivery) issue.push('<span class="badge needs-date">Needs Delivery Date</span>');
+                else if (i.open_order) issue.push('<span class="badge open-order">Open Order</span>');
+                if (i.qty <= 0) issue.push('<span class="badge needs-date">Out of stock</span>');
+                else if (isLowStock(i)) issue.push('<span class="badge low">Low stock</span>');
+                return `<tr>
+                  <td><strong>${escapeHtml(i.name)}</strong><br><code style="font-size:0.75rem">${escapeHtml(i.part_number)}</code></td>
+                  <td>${issue.join(' ') || '—'}</td>
+                  <td><button class="secondary" onclick="editItem('${i.id}')">Edit</button></td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>`;
+      }
+    }
+
+    async function loadAdjustmentReport() {
+      const status = document.getElementById('adj-status');
+      const tableEl = document.getElementById('adj-report-table');
+      if (!supabaseClient) return;
+      if (!hasAdjustmentsTable) {
+        // re-probe
+        const probe = await supabaseClient.from('inventory_adjustments').select('id').limit(1);
+        hasAdjustmentsTable = !probe.error;
+      }
+      if (!hasAdjustmentsTable) {
+        if (status) status.textContent = 'Adjustment table not found — run the SQL on the More tab, then try again.';
+        if (tableEl) tableEl.innerHTML = '';
+        lastAdjustmentRows = [];
+        return;
+      }
+      if (status) status.textContent = 'Loading…';
+      let q = supabaseClient.from('inventory_adjustments')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(500);
+      const userF = document.getElementById('adj-user-filter')?.value;
+      const actionF = document.getElementById('adj-action-filter')?.value;
+      const fromF = document.getElementById('adj-from')?.value;
+      const toF = document.getElementById('adj-to')?.value;
+      if (userF) q = q.eq('changed_by', userF);
+      if (actionF) q = q.eq('action', actionF);
+      if (fromF) q = q.gte('created_at', fromF + 'T00:00:00');
+      if (toF) q = q.lte('created_at', toF + 'T23:59:59');
+      const { data, error } = await q;
+      if (error) {
+        if (status) status.textContent = 'Load failed: ' + error.message;
+        lastAdjustmentRows = [];
+        return;
+      }
+      lastAdjustmentRows = data || [];
+      if (status) status.textContent = `${lastAdjustmentRows.length} adjustment${lastAdjustmentRows.length === 1 ? '' : 's'} found.`;
+      if (!lastAdjustmentRows.length) {
+        tableEl.innerHTML = '<p style="color:var(--muted);">No adjustments match these filters.</p>';
+        return;
+      }
+      tableEl.innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>When</th>
+              <th>Who</th>
+              <th>Action</th>
+              <th>Part</th>
+              <th>Qty</th>
+              <th>Details</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${lastAdjustmentRows.map(r => {
+              const when = r.created_at ? new Date(r.created_at).toLocaleString() : '—';
+              const qty = (r.qty_before != null || r.qty_after != null)
+                ? `${r.qty_before ?? '—'} → ${r.qty_after ?? '—'}`
+                : '—';
+              return `<tr>
+                <td style="white-space:nowrap;font-size:0.78rem;">${escapeHtml(when)}</td>
+                <td>${escapeHtml(r.changed_by || '—')}</td>
+                <td><code style="font-size:0.75rem;">${escapeHtml(r.action || '')}</code></td>
+                <td>
+                  <strong>${escapeHtml(r.name || '—')}</strong><br>
+                  <code style="font-size:0.72rem;color:var(--muted)">${escapeHtml(r.part_number || '')}</code>
+                </td>
+                <td style="white-space:nowrap;">${escapeHtml(String(qty))}</td>
+                <td style="font-size:0.78rem;color:var(--muted);">${escapeHtml(r.details || '')}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>`;
+    }
+
+    function exportAdjustmentCsv() {
+      if (!lastAdjustmentRows.length) {
+        showStatus('Generate a report first', 'error');
+        return;
+      }
+      const headers = ['when','who','action','part_number','name','qty_before','qty_after','details'];
+      const lines = [headers.join(',')];
+      lastAdjustmentRows.forEach(r => {
+        const row = [
+          r.created_at || '',
+          r.changed_by || '',
+          r.action || '',
+          r.part_number || '',
+          r.name || '',
+          r.qty_before ?? '',
+          r.qty_after ?? '',
+          r.details || ''
+        ].map(v => {
+          const s = String(v).replace(/"/g, '""');
+          return `"${s}"`;
+        });
+        lines.push(row.join(','));
+      });
+      const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `inventory-adjustments-${new Date().toISOString().slice(0,10)}.csv`;
+      a.click();
+    }
+
+    function printAdjustmentReport() {
+      if (!lastAdjustmentRows.length) {
+        showStatus('Generate a report first', 'error');
+        return;
+      }
+      const html = `<!DOCTYPE html><html><head><title>Inventory Adjustments</title>
+        <style>body{font-family:system-ui,sans-serif;font-size:12px;padding:16px;}
+        table{width:100%;border-collapse:collapse;} th,td{border:1px solid #ccc;padding:6px;text-align:left;}
+        th{background:#f1f5f9;}</style></head><body>
+        <h1>Inventory Adjustment Report</h1>
+        <p>Generated ${new Date().toLocaleString()} · ${lastAdjustmentRows.length} rows</p>
+        ${document.getElementById('adj-report-table').innerHTML}
+        <script>window.onload=function(){window.print();}<\/script>
+</body></html>`;
+      const w = window.open('', '_blank');
+      w.document.write(html);
+      w.document.close();
+    }
+
+    async function saveItem() {
+      if (!supabaseClient) { showStatus('Configure Supabase first', 'error'); return; }
+      if (!requireUser('saving parts')) return;
+      const name = document.getElementById('item-name').value.trim();
+      const part_number = document.getElementById('item-barcode').value.trim().replace(/\s+/g, '');
+      if (!name || !part_number) { showStatus('Name and Part Number are required', 'error'); return; }
+      const id = document.getElementById('edit-id').value;
+      const openOrder = document.getElementById('item-open-order').checked;
+      const newQty = parseInt(document.getElementById('item-qty').value) || 0;
+      const newUsed = parseInt(document.getElementById('item-qty-used')?.value) || 0;
+      const existingItem = id ? inventory.find(i => i.id === id) : null;
+      const payload = {
+        name, part_number,
+        qty: newQty,
+        qty_used: newUsed,
+        reorder_level: parseInt(document.getElementById('item-reorder').value) || 0,
+        buy_price: parseFloat(document.getElementById('item-buy-price').value) || null,
+        sell_price: parseFloat(document.getElementById('item-sell-price').value) || null,
+        source: canonicalComboValue('source', document.getElementById('item-source').value) || null,
+        category: canonicalComboValue('category', document.getElementById('item-category').value) || null,
+        exclude_from_valuation: !!document.getElementById('item-exclude-value')?.checked,
+        list_price: parseFloat(document.getElementById('item-list-price')?.value) || null,
+        list_currency: currentPricingProfile().code,
+        sell_factor: parseFloat(document.getElementById('item-sell-factor')?.value) || null,
+        location: canonicalComboValue('location', document.getElementById('item-location').value) || null,
+        notes: document.getElementById('item-notes').value.trim() || null,
+        open_order: openOrder,
+        date_ordered: openOrder ? (document.getElementById('item-date-ordered').value || null) : null,
+        estimated_delivery: openOrder ? (document.getElementById('item-est-delivery').value || null) : null,
+        ordered_qty: openOrder ? (parseInt(document.getElementById('item-ordered-qty').value) || null) : null,
+        updated_by: currentUser(),
+        updated_at: new Date().toISOString()
+      };
+      if (!hasCategoryColumn) delete payload.category;
+      if (!hasQtyUsedColumn) delete payload.qty_used;
+      if (!hasExcludeValueColumn) delete payload.exclude_from_valuation;
+      if (!hasListPriceColumn) {
+        delete payload.list_price;
+        delete payload.list_currency;
+        delete payload.sell_factor;
+      }
+      // Never overwrite barcode on edit; set only on create
+      if (!id && hasBarcodeColumn) {
+        payload.barcode = generateBarcode();
+      }
+      let error;
+      let insertedId = id;
+      if (id) {
+        // strip barcode if present so updates never change it
+        delete payload.barcode;
+        ({ error } = await supabaseClient.from('inventory').update(payload).eq('id', id));
+      } else {
+        const { data: existing } = await supabaseClient.from('inventory').select('id').eq('part_number', part_number).maybeSingle();
+        if (existing) { showStatus('Part number already exists', 'error'); return; }
+        const res = await supabaseClient.from('inventory').insert(payload).select('id').maybeSingle();
+        error = res.error;
+        insertedId = res.data?.id;
+        if (error && /barcode/i.test(error.message || '')) {
+          hasBarcodeColumn = false;
+          delete payload.barcode;
+          const retry = await supabaseClient.from('inventory').insert(payload).select('id').maybeSingle();
+          error = retry.error;
+          insertedId = retry.data?.id;
+        }
+      }
+      if (error && /qty_used/i.test(error.message || '')) {
+        hasQtyUsedColumn = false;
+        delete payload.qty_used;
+        if (id) ({ error } = await supabaseClient.from('inventory').update(payload).eq('id', id));
+        else {
+          const retry = await supabaseClient.from('inventory').insert(payload).select('id').maybeSingle();
+          error = retry.error;
+          insertedId = retry.data?.id;
+        }
+      }
+      if (error && /exclude_from_valuation/i.test(error.message || '')) {
+        hasExcludeValueColumn = false;
+        delete payload.exclude_from_valuation;
+        if (id) ({ error } = await supabaseClient.from('inventory').update(payload).eq('id', id));
+        else {
+          const retry = await supabaseClient.from('inventory').insert(payload).select('id').maybeSingle();
+          error = retry.error;
+          insertedId = retry.data?.id;
+        }
+      }
+      if (error && /list_price|list_currency|sell_factor/i.test(error.message || '')) {
+        hasListPriceColumn = false;
+        delete payload.list_price;
+        delete payload.list_currency;
+        delete payload.sell_factor;
+        if (id) ({ error } = await supabaseClient.from('inventory').update(payload).eq('id', id));
+        else {
+          const retry = await supabaseClient.from('inventory').insert(payload).select('id').maybeSingle();
+          error = retry.error;
+          insertedId = retry.data?.id;
+        }
+      }
+      if (error) {
+        if (/category/i.test(error.message)) {
+          showStatus('Save failed: add the category column (see More tab SQL), then try again', 'error');
+        } else {
+          showStatus('Save failed: ' + error.message, 'error');
+        }
+        return;
+      }
+      if (id) {
+        const qtyChanged = existingItem && (existingItem.qty || 0) !== newQty;
+        const usedChanged = existingItem && qtyUsedOf(existingItem) !== newUsed;
+        await logAdjustment({
+          inventory_id: id,
+          part_number,
+          name,
+          action: qtyChanged ? 'set_qty' : 'update',
+          qty_before: existingItem?.qty,
+          qty_after: newQty,
+          details: qtyChanged ? 'Qty changed via edit form' : (usedChanged ? 'Used qty updated' : 'Part details updated')
+        });
+        await logPriceHistory(existingItem, payload, 'Edit form');
+        const dNew = newQty - (existingItem?.qty || 0);
+        await applyQtyDeltaToLayers({ id, part_number, buy_price: payload.buy_price, delta: dNew, condition: 'new', source: 'edit' });
+        if (hasQtyUsedColumn) {
+          const dUsed = newUsed - qtyUsedOf(existingItem);
+          await applyQtyDeltaToLayers({ id, part_number, buy_price: 0, delta: dUsed, condition: 'used', source: 'edit' });
+        }
+      } else {
+        await logAdjustment({
+          inventory_id: insertedId,
+          part_number,
+          name,
+          action: 'create',
+          qty_before: null,
+          qty_after: newQty,
+          details: 'Created'
+        });
+        await logPriceHistory({ id: insertedId, part_number, name, qty: newQty, qty_used: newUsed }, payload, 'Created');
+        if (newQty > 0) await addCostLayer({ inventory_id: insertedId, part_number, unit_cost: payload.buy_price || 0, qty: newQty, condition: 'new', source: 'create' });
+        if (newUsed > 0) await addCostLayer({ inventory_id: insertedId, part_number, unit_cost: 0, qty: newUsed, condition: 'used', source: 'create' });
+      }
+      showStatus((id ? 'Updated' : 'Added') + ` by ${currentUser()}`, 'success');
+      clearForm();
+      await loadInventory();
+      document.querySelector('[data-tab="dashboard"]').click();
+    }
+
+    function clearForm() {
+      document.getElementById('edit-id').value = '';
+      document.getElementById('form-title').textContent = 'Add Part';
+      ['item-name','item-barcode','item-list-price','item-sell-factor','item-buy-price','item-sell-price','item-source','item-category','item-location','item-notes',
+       'item-date-ordered','item-est-delivery','item-ordered-qty'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+      });
+      const ex = document.getElementById('item-exclude-value');
+      if (ex) ex.checked = false;
+      syncPricingUi();
+      document.getElementById('item-qty').value = 0;
+      const usedEl = document.getElementById('item-qty-used');
+      if (usedEl) usedEl.value = 0;
+      document.getElementById('item-reorder').value = 0;
+      document.getElementById('item-open-order').checked = false;
+      const bcHint = document.getElementById('item-stable-barcode-hint');
+      if (bcHint) bcHint.remove();
+      toggleOrderFields();
+    }
+
+    function editItem(id) {
+      const item = inventory.find(i => i.id === id);
+      if (!item) return;
+      document.getElementById('edit-id').value = item.id;
+      document.getElementById('form-title').textContent = 'Edit Part';
+      document.getElementById('item-name').value = item.name || '';
+      document.getElementById('item-barcode').value = item.part_number || '';
+      document.getElementById('item-qty').value = item.qty || 0;
+      const usedEl = document.getElementById('item-qty-used');
+      if (usedEl) usedEl.value = qtyUsedOf(item);
+      document.getElementById('item-reorder').value = (item.reorder_level != null && item.reorder_level !== '') ? item.reorder_level : 0;
+      document.getElementById('item-buy-price').value = item.buy_price ?? '';
+      document.getElementById('item-sell-price').value = item.sell_price ?? '';
+      document.getElementById('item-source').value = item.source || '';
+      document.getElementById('item-category').value = item.category || '';
+      const ex = document.getElementById('item-exclude-value');
+      if (ex) ex.checked = isExcludedFromValue(item);
+      const listEl = document.getElementById('item-list-price');
+      const factorEl = document.getElementById('item-sell-factor');
+      syncPricingUi();
+      if (listEl) listEl.value = item.list_price ?? '';
+      if (factorEl && item.sell_factor != null) factorEl.value = item.sell_factor;
+      document.getElementById('item-sell-price').value = item.sell_price ?? '';
+      if (item.list_price != null && item.sell_factor != null) applySellFromList();
+      document.getElementById('item-location').value = item.location || '';
+      document.getElementById('item-notes').value = item.notes || '';
+      document.getElementById('item-open-order').checked = !!item.open_order;
+      document.getElementById('item-date-ordered').value = item.date_ordered || '';
+      document.getElementById('item-est-delivery').value = item.estimated_delivery || '';
+      document.getElementById('item-ordered-qty').value = item.ordered_qty || '';
+      const bcHint = document.getElementById('item-stable-barcode-hint');
+      if (bcHint) bcHint.remove();
+      toggleOrderFields();
+      document.querySelector('[data-tab="add"]').click();
+      setTimeout(() => {
+        document.getElementById('form-title')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 50);
+    }
+
+    async function quickAdjust(id, delta) {
+      if (!requireUser('adjusting quantity')) return;
+      if (!supabaseClient) return;
+      const item = inventory.find(i => i.id === id);
+      if (!item) return;
+      const oldQty = item.qty || 0;
+      const newQty = Math.max(0, oldQty + delta);
+      const { error } = await supabaseClient.from('inventory')
+        .update({ qty: newQty, updated_by: currentUser(), updated_at: new Date().toISOString() })
+        .eq('id', id);
+      if (error) showStatus(error.message, 'error');
+      else {
+        await logAdjustment({
+          inventory_id: id,
+          part_number: item.part_number,
+          name: item.name,
+          action: delta > 0 ? 'stock_in' : 'stock_out',
+          qty_before: oldQty,
+          qty_after: newQty,
+          details: delta > 0 ? '+1 on Home (new)' : '−1 on Home (new)'
+        });
+        await applyQtyDeltaToLayers({ id, part_number: item.part_number, buy_price: item.buy_price, delta, condition: 'new', source: 'home' });
+        await loadInventory();
+      }
+    }
+
+    let pendingScanItem = null; // item waiting for Commit
+    let lastScannedCode = null;
+
+    // Lookup only — does NOT change inventory until Commit
+    async function processScan(rawCode) {
+      if (!rawCode) return;
+      const extracted = extractPartFromScanPayload(rawCode);
+      const code = String(extracted || rawCode).trim();
+      if (!code) return;
+      // Ignore rapid duplicate reads from the same camera session
+      if (scanning && code === lastScannedCode) return;
+      lastScannedCode = code;
+
+      const item = findInventoryByKey(code);
+      const resultEl = document.getElementById('scan-result');
+
+      // Stop camera so the user can focus on the result
+      await stopScanner();
+
+      // Ensure Scan tab is visible (deep links + after camera stop)
+      showScanTab();
+
+      if (!item) {
+        pendingScanItem = null;
+        const safe = escapeHtml(code).replace(/'/g, '&#39;');
+        resultEl.innerHTML = `
+          <div class="scan-result-card">
+            <p style="margin:0 0 0.5rem;"><strong>Unknown part</strong></p>
+            <code style="font-size:0.95rem;">${escapeHtml(code)}</code>
+            <p style="font-size:0.85rem;color:var(--muted);margin:0.75rem 0 0.5rem;">Not in inventory yet.</p>
+            <div class="btn-group">
+              <button onclick="prefillNew('${safe}')">Add this part</button>
+              <button class="secondary" onclick="startScanner()">Scan again</button>
+            </div>
+          </div>`;
+        resultEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        return;
+      }
+
+      pendingScanItem = item;
+      renderScanFoundCard(item);
+      resultEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function showScanTab() {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      const tab = document.querySelector('[data-tab="scan"]');
+      const panel = document.getElementById('scan');
+      if (tab) tab.classList.add('active');
+      if (panel) panel.classList.add('active');
+    }
+
+    /** Handle ?part= / ?pn= deep links from phone Camera QR scans. */
+    async function handleDeepLinkPart() {
+      let part = '';
+      try {
+        const params = new URLSearchParams(window.location.search);
+        part = (params.get('p') || params.get('part') || params.get('pn') || '').trim();
+      } catch (e) { return; }
+      if (!part) return;
+      await stopScanner();
+      showScanTab();
+      // Allow same code even if lastScannedCode set
+      lastScannedCode = null;
+      await processScan(part);
+      // Clean query so refresh does not re-fire; keep path for Pages
+      try {
+        const clean = window.location.pathname + (window.location.hash || '');
+        history.replaceState({}, document.title, clean || '/');
+      } catch (e2) { /* ignore */ }
+    }
+
+    function renderScanFoundCard(item) {
+      const resultEl = document.getElementById('scan-result');
+      if (!resultEl || !item) return;
+      const q = item.qty || 0;
+      const notesVal = item.notes || '';
+      resultEl.innerHTML = `
+        <div class="scan-result-card" style="border-color:var(--accent);">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:0.5rem;margin-bottom:0.25rem;">
+            <div style="font-size:0.75rem;color:var(--success);font-weight:600;">✓ Found</div>
+            <div class="btn-group" style="margin:0;">
+              <button type="button" class="quote-btn" style="padding:0.35rem 0.65rem;font-size:0.8rem;margin:0;"
+                onclick="addToQuote('${item.id}')">Quote</button>
+              <button type="button" class="secondary" style="padding:0.35rem 0.65rem;font-size:0.8rem;margin:0;"
+                onclick="editFromScan('${item.id}')">Edit part</button>
+            </div>
+          </div>
+          <div style="font-size:1.1rem;font-weight:700;margin-bottom:0.15rem;">${escapeHtml(item.name)}</div>
+          <code style="font-size:0.9rem;color:var(--muted);">${escapeHtml(item.part_number)}</code>
+          <div class="meta-line" style="margin-top:0.35rem;">
+            ${item.source ? `<span class="badge source-tag">${escapeHtml(item.source)}</span>` : ''}
+            ${item.category ? `<span class="badge category">${escapeHtml(item.category)}</span>` : ''}
+          </div>
+          ${item.location ? `<div style="font-size:0.8rem;color:var(--muted);margin-top:0.25rem;">Location: ${escapeHtml(item.location)}</div>` : ''}
+          <div style="margin:0.85rem 0 0.5rem;font-size:1rem;">
+            New: <strong style="font-size:1.25rem;">${q}</strong>
+            ${qtyUsedOf(item) ? ` · Used: <strong>${qtyUsedOf(item)}</strong>` : ''}
+            ${isLowStock(item) ? ' <span class="badge low">Low</span>' : ''}
+            ${((q + qtyUsedOf(item)) <= 0) ? ' <span class="badge needs-date">Out</span>' : ''}
+          </div>
+          <div class="row">
+            ${hasQtyUsedColumn ? `<div>
+              <label>Condition</label>
+              <select id="scan-condition">
+                <option value="new">New (valued)</option>
+                <option value="used">Used / salvage (not valued)</option>
+              </select>
+            </div>` : ''}
+            <div>
+              <label>Action</label>
+              <select id="scan-action">
+                <option value="out">Remove (stock out)</option>
+                <option value="in">Add (stock in)</option>
+                <option value="set">Set exact qty</option>
+              </select>
+            </div>
+            <div>
+              <label>Quantity</label>
+              <input type="number" id="scan-qty" value="1" min="0">
+            </div>
+          </div>
+          <div style="margin-top:0.15rem;">
+            <label for="scan-notes">Notes</label>
+            <textarea id="scan-notes" rows="3" placeholder="Part notes — view or edit here…">${escapeHtml(notesVal)}</textarea>
+            <p class="hint" style="margin-top:-0.35rem;">Use <strong>Edit part</strong> for name, prices, and the rest.</p>
+          </div>
+          <div class="btn-group" style="margin-top:0.25rem;">
+            <button onclick="commitScanChange()" style="flex:1;padding:0.75rem;font-size:1rem;font-weight:600;">Commit change</button>
+            <button type="button" class="secondary" onclick="saveScanNotesOnly()">Save notes</button>
+            <button type="button" class="secondary" onclick="startScanner()">Scan again</button>
+          </div>
+        </div>`;
+    }
+
+    function editFromScan(id) {
+      // Jump to full Add/Edit form (same as adding a part) to review identifiers, category, prices, etc.
+      pendingScanItem = null;
+      lastScannedCode = null;
+      const resultEl = document.getElementById('scan-result');
+      if (resultEl) resultEl.innerHTML = '';
+      editItem(id);
+    }
+
+    async function saveScanNotesOnly() {
+      if (!pendingScanItem || !supabaseClient) return;
+      if (!requireUser('saving notes')) return;
+      const notesRaw = document.getElementById('scan-notes')?.value ?? '';
+      const notes = notesRaw.trim() || null;
+      const { error } = await supabaseClient.from('inventory')
+        .update({ notes, updated_by: currentUser(), updated_at: new Date().toISOString() })
+        .eq('id', pendingScanItem.id);
+      if (error) {
+        showStatus(error.message, 'error');
+        return;
+      }
+      pendingScanItem.notes = notes;
+      const idx = inventory.findIndex(i => i.id === pendingScanItem.id);
+      if (idx >= 0) inventory[idx].notes = notes;
+      await logAdjustment({
+        inventory_id: pendingScanItem.id,
+        part_number: pendingScanItem.part_number,
+        name: pendingScanItem.name,
+        action: 'notes',
+        qty_before: pendingScanItem.qty,
+        qty_after: pendingScanItem.qty,
+        details: 'Notes updated via scan'
+      });
+      showStatus(`Notes saved (${currentUser()})`, 'success');
+    }
+
+    async function commitScanChange() {
+      if (!pendingScanItem || !supabaseClient) return;
+      if (!requireUser('committing scan changes')) return;
+      const item = pendingScanItem;
+      const action = document.getElementById('scan-action')?.value || 'out';
+      const qty = parseInt(document.getElementById('scan-qty')?.value, 10);
+      if (isNaN(qty) || qty < 0) {
+        showStatus('Enter a valid quantity', 'error');
+        return;
+      }
+      const cond = (hasQtyUsedColumn && document.getElementById('scan-condition')?.value === 'used') ? 'used' : 'new';
+      const oldNew = item.qty || 0;
+      const oldUsed = qtyUsedOf(item);
+      const oldQty = cond === 'used' ? oldUsed : oldNew;
+      let newQty = oldQty;
+      let logAction = 'set_qty';
+      if (action === 'out') { newQty = Math.max(0, oldQty - qty); logAction = 'stock_out'; }
+      else if (action === 'in') { newQty = oldQty + qty; logAction = 'stock_in'; }
+      else if (action === 'set') { newQty = qty; logAction = 'set_qty'; }
+
+      const notesRaw = document.getElementById('scan-notes')?.value;
+      const notes = notesRaw != null ? (notesRaw.trim() || null) : (item.notes || null);
+
+      const patch = {
+        notes,
+        updated_by: currentUser(),
+        updated_at: new Date().toISOString()
+      };
+      if (cond === 'used') patch.qty_used = newQty;
+      else patch.qty = newQty;
+
+      const { error } = await supabaseClient.from('inventory')
+        .update(patch)
+        .eq('id', item.id);
+
+      const resultEl = document.getElementById('scan-result');
+      if (error) {
+        showStatus(error.message, 'error');
+        return;
+      }
+
+      await logAdjustment({
+        inventory_id: item.id,
+        part_number: item.part_number,
+        name: item.name,
+        action: logAction,
+        qty_before: oldQty,
+        qty_after: newQty,
+        details: `Scan commit · ${cond} · ${action} ${qty}`
+      });
+      const delta = newQty - oldQty;
+      await applyQtyDeltaToLayers({
+        id: item.id,
+        part_number: item.part_number,
+        buy_price: item.buy_price,
+        delta,
+        condition: cond,
+        source: 'scan'
+      });
+
+      const savedId = item.id;
+      pendingScanItem = null;
+      lastScannedCode = null;
+      resultEl.innerHTML = `
+        <div class="scan-result-card" style="border-color:var(--success);">
+          <div style="font-size:0.75rem;color:var(--success);font-weight:600;margin-bottom:0.35rem;">✓ Updated</div>
+          <div style="font-weight:700;">${escapeHtml(item.name)}</div>
+          <code style="font-size:0.85rem;color:var(--muted);">${escapeHtml(item.part_number)}</code>
+          <div style="margin-top:0.65rem;font-size:1.15rem;">
+            ${cond === 'used' ? 'Used' : 'New'}: ${oldQty} → <strong>${newQty}</strong>
+          </div>
+          ${notes ? `<div style="margin-top:0.5rem;font-size:0.85rem;color:var(--muted);white-space:pre-wrap;"><strong style="color:var(--text);">Notes:</strong> ${escapeHtml(notes)}</div>` : ''}
+          <div style="font-size:0.78rem;color:var(--muted);margin-top:0.35rem;">By ${escapeHtml(currentUser())}</div>
+          <div class="btn-group" style="margin-top:0.85rem;">
+            <button onclick="startScanner()">Scan next item</button>
+            <button type="button" class="quote-btn" onclick="addToQuote('${savedId}')">Quote</button>
+            <button type="button" class="secondary" onclick="editFromScan('${savedId}')">Edit part</button>
+          </div>
+        </div>`;
+      showStatus(`Qty updated: ${oldQty} → ${newQty} (${currentUser()})`, 'success');
+      await loadInventory();
+    }
+
+    function adjustItem(id) {
+      const item = inventory.find(i => i.id === id);
+      if (!item) return;
+      lastScannedCode = null;
+      pendingScanItem = item;
+      showScanTab();
+      renderScanFoundCard(item);
+      const resultEl = document.getElementById('scan-result');
+      if (resultEl) resultEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function pickScanMatch(id) {
+      const item = inventory.find(i => i.id === id);
+      if (!item) return;
+      lastScannedCode = null;
+      pendingScanItem = item;
+      renderScanFoundCard(item);
+    }
+
+    function renderScanMatchList(query, matches) {
+      const resultEl = document.getElementById('scan-result');
+      if (!resultEl) return;
+      if (!matches.length) {
+        pendingScanItem = null;
+        const safe = escapeHtml(query).replace(/'/g, '&#39;');
+        resultEl.innerHTML = `
+          <div class="scan-result-card">
+            <p style="margin:0 0 0.5rem;"><strong>No matches</strong> for “${escapeHtml(query)}”</p>
+            <p class="hint" style="margin:0 0 0.5rem;">Name, part #, or label ID.</p>
+            <div class="btn-group">
+              <button onclick="prefillNew('${safe}')">Add this as a new part</button>
+            </div>
+          </div>`;
+        return;
+      }
+      if (matches.length === 1) {
+        pendingScanItem = matches[0];
+        renderScanFoundCard(matches[0]);
+        return;
+      }
+      pendingScanItem = null;
+      resultEl.innerHTML = `
+        <div class="scan-result-card">
+          <p style="margin:0 0 0.45rem;"><strong>${matches.length} matches</strong> for “${escapeHtml(query)}”</p>
+          <div class="scan-match-list">
+            ${matches.slice(0, 40).map(i => `
+              <button type="button" class="scan-match-row" onclick="pickScanMatch('${i.id}')">
+                <span class="mn">${escapeHtml(i.name)}</span>
+                <span class="mp">${escapeHtml(i.part_number || '')}${i.source ? ' · ' + escapeHtml(i.source) : ''} · qty ${i.qty || 0}</span>
+              </button>`).join('')}
+          </div>
+          ${matches.length > 40 ? `<p class="hint" style="margin:0.5rem 0 0;">Showing first 40 — type more to narrow.</p>` : ''}
+        </div>`;
+    }
+
+    let manualScanTimer = null;
+    function onManualScanInput() {
+      clearTimeout(manualScanTimer);
+      manualScanTimer = setTimeout(() => {
+        const q = document.getElementById('manual-scan')?.value.trim() || '';
+        if (q.length < 2) return;
+        const exact = findInventoryByKey(q);
+        if (exact) return; // wait for Look up / Enter
+        const matches = searchInventoryMatches(q);
+        if (matches.length > 1) renderScanMatchList(q, matches);
+      }, 180);
+    }
+
+    function processManualScan() {
+      const code = document.getElementById('manual-scan').value.trim();
+      if (!code) {
+        showStatus('Type a name or part number', 'error');
+        return;
+      }
+      lastScannedCode = null;
+      const extracted = extractPartFromScanPayload(code);
+      const exact = findInventoryByKey(extracted) || findInventoryByKey(code);
+      if (exact) {
+        pendingScanItem = exact;
+        showScanTab();
+        renderScanFoundCard(exact);
+        return;
+      }
+      const matches = searchInventoryMatches(code);
+      renderScanMatchList(code, matches);
+    }
+
+    function prefillNew(code) {
+      clearForm();
+      const pn = document.getElementById('item-barcode') || document.getElementById('item-part-number');
+      if (pn) pn.value = code;
+      document.querySelector('[data-tab="add"]').click();
+    }
+
+    async function startScanner() {
+      if (scanning) return;
+      lastScannedCode = null;
+      // Clear previous result so attention is on the camera
+      const resultEl = document.getElementById('scan-result');
+      if (resultEl && !pendingScanItem) resultEl.innerHTML = '';
+      html5QrCode = new Html5Qrcode('reader');
+      try {
+        await html5QrCode.start(
+          { facingMode: 'environment' },
+          { fps: 8, qrbox: { width: 250, height: 150 } },
+          (decodedText) => processScan(decodedText),
+          () => {}
+        );
+        scanning = true;
+        document.getElementById('start-scan-btn').style.display = 'none';
+        document.getElementById('stop-scan-btn').style.display = 'inline-block';
+      } catch (err) {
+        showStatus('Camera error: ' + err, 'error');
+      }
+    }
+
+    async function stopScanner() {
+      if (html5QrCode && scanning) {
+        try { await html5QrCode.stop(); } catch (e) {}
+        scanning = false;
+        document.getElementById('start-scan-btn').style.display = 'inline-block';
+        document.getElementById('stop-scan-btn').style.display = 'none';
+      }
+    }
+
+    function populateLabelList() {
+      const q = (document.getElementById('label-search')?.value || '').toLowerCase();
+      const list = document.getElementById('label-checklist');
+      if (!list) return;
+      const filtered = inventory.filter(i =>
+        !q ||
+        (i.name || '').toLowerCase().includes(q) ||
+        (i.part_number || '').toLowerCase().includes(q) ||
+        (i.barcode || '').toLowerCase().includes(q)
+      );
+      if (filtered.length === 0) {
+        list.innerHTML = '<p style="color:var(--muted);padding:0.5rem;">No parts match.</p>';
+        return;
+      }
+      list.innerHTML = filtered.map(i => `
+        <label style="display:flex;align-items:flex-start;gap:0.5rem;padding:0.4rem 0.35rem;border-bottom:1px solid var(--border);cursor:pointer;font-size:0.85rem;">
+          <input type="checkbox" class="label-check" value="${i.id}" style="width:auto;margin:0.2rem 0 0 0;">
+          <span>
+            <strong>${escapeHtml(i.name)}</strong><br>
+            <code style="font-size:0.75rem;color:var(--muted)">${escapeHtml(i.part_number)}</code>
+          </span>
+        </label>
+      `).join('');
+    }
+
+    // keep old name so existing calls still work
+    function populateLabelSelect() { populateLabelList(); }
+
+    function selectAllLabels(checked) {
+      document.querySelectorAll('.label-check').forEach(cb => cb.checked = checked);
+    }
+
+    /** Last generated label payload for print windows (avoids re-selecting). */
+    let lastLabelItems = [];
+
+    /**
+     * DK-1201 text budget (3.5" × 1.1", 0.95" QR, ~2.37" × ~0.73" name box).
+     * Name auto-sizes to the largest font that fits the leftover space above the part #.
+     * 32 chars stays large (~20–26px, 1–2 lines). Part # stays 16px at QR bottom.
+     */
+    const LABEL_DK_NAME_MAX = 32;
+    const LABEL_DK_PN_ONE_LINE = 22;
+    const LABEL_DK_PN_HARD = 28;
+
+    function shortLabelName(name, max) {
+      const n = String(name || '');
+      return n.length > max ? n.slice(0, max - 1) + '…' : n;
+    }
+    function shortLabelPn(pn, max) {
+      const n = String(pn || '');
+      return n.length > max ? n.slice(0, max - 1) + '…' : n;
+    }
+
+    /**
+     * Grow item-name font until it fills the leftover box (1 line if that is bigger, else 2).
+     * Used by on-screen preview and the Brother print popup.
+     */
+    function fitDkLabelName(nameEl) {
+      if (!nameEl) return;
+      const box = nameEl.parentElement;
+      if (!box) return;
+      const w = box.clientWidth;
+      const h = box.clientHeight;
+      if (w < 8 || h < 8) return;
+
+      nameEl.style.margin = '0';
+      nameEl.style.padding = '0';
+      nameEl.style.fontWeight = '700';
+      nameEl.style.lineHeight = '1.12';
+      nameEl.style.overflow = 'hidden';
+      nameEl.style.display = 'block';
+      nameEl.style.wordBreak = 'break-word';
+      nameEl.style.hyphens = 'none';
+
+      const minPx = 13;
+      const maxPx = Math.min(28, Math.floor(h / 1.12));
+
+      function fits(px, lines) {
+        nameEl.style.fontSize = px + 'px';
+        nameEl.style.whiteSpace = lines === 1 ? 'nowrap' : 'normal';
+        const lh = px * 1.12;
+        if (nameEl.scrollWidth > w + 1) return false;
+        if (nameEl.scrollHeight > h + 1) return false;
+        if (nameEl.scrollHeight > lh * lines + 2) return false;
+        return true;
+      }
+
+      function bestFor(lines) {
+        let lo = minPx, hi = maxPx, best = minPx;
+        for (let i = 0; i < 18; i++) {
+          const mid = (lo + hi) / 2;
+          if (fits(mid, lines)) { best = mid; lo = mid; }
+          else hi = mid;
+        }
+        return best;
+      }
+
+      const one = bestFor(1);
+      const two = bestFor(2);
+      if (one >= two && one >= 16) {
+        nameEl.style.whiteSpace = 'nowrap';
+        nameEl.style.fontSize = one + 'px';
+      } else {
+        nameEl.style.whiteSpace = 'normal';
+        nameEl.style.fontSize = two + 'px';
+      }
+    }
+
+    function fitAllDkLabelNames(root) {
+      const scope = root || document;
+      scope.querySelectorAll('.dk-name').forEach(fitDkLabelName);
+    }
+
+    function generateBatchLabels() {
+      const checked = [...document.querySelectorAll('.label-check:checked')].map(cb => cb.value);
+      if (checked.length === 0) {
+        showStatus('Select at least one part', 'error');
+        return;
+      }
+      const items = checked.map(id => inventory.find(i => i.id === id)).filter(Boolean);
+      lastLabelItems = items.map(i => ({
+        id: i.id,
+        name: i.name,
+        part_number: i.part_number,
+        barcode: stablePartKey(i),
+        qrUrl: buildPartDeepLink(i)
+      }));
+      const preview = document.getElementById('batch-label-preview');
+      const card = document.getElementById('batch-preview-card');
+      document.getElementById('batch-count').textContent = `(${items.length} label${items.length > 1 ? 's' : ''})`;
+
+      // Actual-size DK-1201 mock. Use <img> PNG (same as print) so canvas pixel size cannot spill out.
+      // Geometry: 3.5" × 1.1", pad 0.06, QR 0.95", gap 0.06 → text column ~2.37".
+      preview.innerHTML = `
+        <p style="margin:0 0 10px;font-size:0.8rem;color:var(--muted);line-height:1.35;">
+          Actual size · Brother DK-1201 <strong>3.5&quot; × 1.1&quot;</strong> ·
+          name auto-sizes (keep ≤ ${LABEL_DK_NAME_MAX} chars) ·
+          part # ≤ ${LABEL_DK_PN_ONE_LINE} chars
+        </p>
+        <div id="batch-label-frames"></div>`;
+
+      const frames = document.getElementById('batch-label-frames');
+      frames.innerHTML = lastLabelItems.map((item, idx) => {
+        const shortName = shortLabelName(item.name, LABEL_DK_NAME_MAX);
+        const pnShow = shortLabelPn(item.part_number, LABEL_DK_PN_HARD);
+        return `
+        <div class="dk1201-preview" style="
+          color:#000; font-family:Arial,Helvetica,sans-serif;
+          width:3.5in; height:1.1in; max-width:100%;
+          margin:0 auto 14px;
+          padding:0.06in 0.06in 0.06in 0.08in;
+          border:1px dashed #999;
+          box-sizing:border-box;
+          display:flex; flex-direction:row; align-items:center; gap:0.06in;
+          overflow:hidden; background:#fff;
+        ">
+          <div style="
+            flex:0 0 0.95in; width:0.95in; height:0.95in;
+            overflow:hidden; position:relative;
+          ">
+            <img id="bc-preview-${idx}" alt="QR" width="200" height="200" style="
+              display:block; width:0.95in; height:0.95in;
+              max-width:0.95in; max-height:0.95in;
+              object-fit:fill;
+              image-rendering:pixelated; image-rendering:crisp-edges;
+            " />
+          </div>
+          <div style="
+            flex:1 1 auto; min-width:0; height:0.95in;
+            text-align:left; display:flex; flex-direction:column;
+            justify-content:flex-end; overflow:hidden;
+          ">
+            <div class="dk-name-box" style="flex:1 1 auto; min-height:0; overflow:hidden;">
+              <div class="dk-name">${escapeHtml(shortName)}</div>
+            </div>
+            <div style="
+              flex:0 0 auto; font-weight:700;font-size:16px;line-height:1.15;letter-spacing:0.01em;
+              overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+              word-break:break-all; padding-top:2px;
+            ">${escapeHtml(pnShow)}</div>
+          </div>
+        </div>`;
+      }).join('');
+
+      // Fill QR images asynchronously (same high-res PNG path as print)
+      lastLabelItems.forEach(async (item, idx) => {
+        const img = document.getElementById(`bc-preview-${idx}`);
+        if (!img) return;
+        const dataUrl = await qrToPrintDataUrl(item.qrUrl, 280);
+        if (dataUrl) img.src = dataUrl;
+      });
+
+      card.style.display = 'block';
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => fitAllDkLabelNames(frames));
+      });
+      showStatus(`${items.length} QR labels ready — preview is actual DK-1201 size; print at 100%`, 'success');
+    }
+
+    function printLabelsBrother() {
+      if (!lastLabelItems.length) {
+        showStatus('Generate a preview first', 'error');
+        return;
+      }
+      openLabelPrintWindow('brother', lastLabelItems);
+    }
+
+    function printLabelsPaper() {
+      if (!lastLabelItems.length) {
+        showStatus('Generate a preview first', 'error');
+        return;
+      }
+      openLabelPrintWindow('paper', lastLabelItems);
+    }
+
+    async function openLabelPrintWindow(mode, items) {
+      const isBrother = mode === 'brother';
+      // High-res PNG QRs (thermal print drivers often blur SVG)
+      const qrs = [];
+      for (const item of items) {
+        const url = item.qrUrl || buildPartDeepLink(item);
+        const dataUrl = await qrToPrintDataUrl(url, isBrother ? 360 : 400);
+        qrs.push(dataUrl || '');
+      }
+
+      const paperCss = `
+        @page { size: letter; margin: 0.4in; }
+        * { box-sizing: border-box; }
+        body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #000;
+          -webkit-print-color-adjust: exact; print-color-adjust: exact; color-adjust: exact; }
+        .sheet {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          grid-template-rows: repeat(4, 1fr);
+          gap: 0.1in;
+          width: 100%;
+          height: 10.2in;
+          page-break-after: always;
+        }
+        .sheet:last-child { page-break-after: auto; }
+        .plabel {
+          border: 1px solid #000;
+          padding: 0.08in 0.1in;
+          display: flex;
+          flex-direction: row;
+          align-items: center;
+          gap: 0.1in;
+          overflow: hidden;
+          background: #fff;
+        }
+        .plabel .qr-img {
+          flex: 0 0 auto; width: 1.35in; height: 1.35in; display: block;
+          image-rendering: pixelated; image-rendering: crisp-edges;
+          -webkit-print-color-adjust: exact; print-color-adjust: exact;
+        }
+        .plabel .txt { flex: 1 1 auto; min-width: 0; text-align: left; }
+        .plabel .n { font-weight: 600; font-size: 12px; line-height: 1.25;
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 6px; color: #222; }
+        .plabel .p { font-weight: 700; font-size: 16px; line-height: 1.2;
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      `;
+      // DK-1201 die-cut ≈ 3.5" × 1.1". QR 0.95"; leftover ~2.37" for name (2 lines) + PN.
+      const brotherCss = `
+        @page { size: 3.5in 1.1in; margin: 0; }
+        * { box-sizing: border-box; }
+        html, body { margin: 0; padding: 0; width: 3.5in; height: 1.1in; overflow: hidden; }
+        body { font-family: Arial, Helvetica, sans-serif; color: #000;
+          -webkit-print-color-adjust: exact; print-color-adjust: exact; color-adjust: exact; }
+        .blabel {
+          width: 3.5in; height: 1.1in; margin: 0;
+          padding: 0.06in 0.06in 0.06in 0.08in;
+          page-break-after: always;
+          page-break-inside: avoid;
+          display: flex; flex-direction: row; align-items: center; gap: 0.06in;
+          overflow: hidden; background: #fff;
+        }
+        .blabel:last-child { page-break-after: auto; }
+        .blabel .qr-img {
+          flex: 0 0 0.95in; width: 0.95in; height: 0.95in; display: block;
+          image-rendering: pixelated; image-rendering: crisp-edges;
+          -webkit-print-color-adjust: exact; print-color-adjust: exact;
+        }
+        .blabel .txt {
+          flex: 1 1 auto; min-width: 0; height: 0.95in;
+          text-align: left; overflow: hidden;
+          display: flex; flex-direction: column; justify-content: flex-end;
+        }
+        .blabel .dk-name-box { flex: 1 1 auto; min-height: 0; overflow: hidden; }
+        .blabel .dk-name { font-weight: 700; line-height: 1.12; color: #111; }
+        .blabel .p {
+          flex: 0 0 auto; font-weight: 700; font-size: 16px; line-height: 1.15; padding-top: 2px;
+          overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+          word-break: break-all;
+        }
+      `;
+
+      const qrImg = (src) => src
+        ? `<img class="qr-img" src="${src}" alt="QR" width="360" height="360" />`
+        : '';
+
+      let bodyHtml = '';
+      if (isBrother) {
+        bodyHtml = items.map((item, idx) => `
+          <div class="blabel">
+            ${qrImg(qrs[idx])}
+            <div class="txt">
+              <div class="dk-name-box"><div class="dk-name">${escapeHtml(shortLabelName(item.name, LABEL_DK_NAME_MAX))}</div></div>
+              <div class="p">${escapeHtml(shortLabelPn(item.part_number, LABEL_DK_PN_HARD))}</div>
+            </div>
+          </div>`).join('');
+      } else {
+        const pages = [];
+        for (let i = 0; i < items.length; i += 8) {
+          const chunk = items.slice(i, i + 8);
+          const cells = chunk.map((item, j) => {
+            const idx = i + j;
+            return `<div class="plabel">
+              ${qrImg(qrs[idx])}
+              <div class="txt">
+                <div class="n">${escapeHtml(shortLabelName(item.name, 48))}</div>
+                <div class="p">${escapeHtml(shortLabelPn(item.part_number, 36))}</div>
+              </div>
+            </div>`;
+          }).join('');
+          const pad = Array(Math.max(0, 8 - chunk.length)).fill('<div class="plabel" style="visibility:hidden;border:none;"></div>').join('');
+          pages.push(`<div class="sheet">${cells}${pad}</div>`);
+        }
+        bodyHtml = pages.join('');
+      }
+
+      const htmlDoc = `<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8">
+<title>QR Labels ${isBrother ? 'Brother DK-1201' : 'Letter 8/sheet'}</title>
+<style>${isBrother ? brotherCss : paperCss}</style>
+</head><body>
+${bodyHtml}
+<script>
+  function fitDkLabelName(nameEl) {
+    if (!nameEl || !nameEl.parentElement) return;
+    var box = nameEl.parentElement;
+    var w = box.clientWidth, h = box.clientHeight;
+    if (w < 8 || h < 8) return;
+    nameEl.style.margin = '0';
+    nameEl.style.padding = '0';
+    nameEl.style.fontWeight = '700';
+    nameEl.style.lineHeight = '1.12';
+    nameEl.style.overflow = 'hidden';
+    nameEl.style.display = 'block';
+    nameEl.style.wordBreak = 'break-word';
+    var minPx = 13, maxPx = Math.min(28, Math.floor(h / 1.12));
+    function fits(px, lines) {
+      nameEl.style.fontSize = px + 'px';
+      nameEl.style.whiteSpace = lines === 1 ? 'nowrap' : 'normal';
+      var lh = px * 1.12;
+      if (nameEl.scrollWidth > w + 1) return false;
+      if (nameEl.scrollHeight > h + 1) return false;
+      if (nameEl.scrollHeight > lh * lines + 2) return false;
+      return true;
+    }
+    function bestFor(lines) {
+      var lo = minPx, hi = maxPx, best = minPx, i, mid;
+      for (i = 0; i < 18; i++) {
+        mid = (lo + hi) / 2;
+        if (fits(mid, lines)) { best = mid; lo = mid; }
+        else hi = mid;
+      }
+      return best;
+    }
+    var one = bestFor(1), two = bestFor(2);
+    if (one >= two && one >= 16) {
+      nameEl.style.whiteSpace = 'nowrap';
+      nameEl.style.fontSize = one + 'px';
+    } else {
+      nameEl.style.whiteSpace = 'normal';
+      nameEl.style.fontSize = two + 'px';
+    }
+  }
+  function sizeThenPrint() {
+    var nodes = document.querySelectorAll('.dk-name');
+    for (var i = 0; i < nodes.length; i++) fitDkLabelName(nodes[i]);
+    window.focus();
+    window.print();
+  }
+  var imgs = Array.prototype.slice.call(document.images || []);
+  if (!imgs.length) { setTimeout(sizeThenPrint, 200); }
+  else {
+    var left = imgs.length;
+    function done(){ left--; if (left <= 0) setTimeout(sizeThenPrint, 150); }
+    imgs.forEach(function(img){
+      if (img.complete) done();
+      else { img.onload = done; img.onerror = done; }
+    });
+    setTimeout(sizeThenPrint, 2500);
+  }
+<\/script>
+</body></html>`;
+
+      const w = window.open('', '_blank');
+      if (!w) {
+        showStatus('Pop-up blocked — allow pop-ups to print labels', 'error');
+        return;
+      }
+      w.document.write(htmlDoc);
+      w.document.close();
+      showStatus(
+        isBrother
+          ? `Printing ${items.length} QR label(s) — set scale to 100% / Actual size (not Fit to Page)`
+          : `Printing ${items.length} shelf QR label(s) — ${Math.ceil(items.length / 8)} letter page(s); scale 100%`,
+        'success'
+      );
+    }
+
+    async function loadPriceHistory() {
+      const status = document.getElementById('price-hist-status');
+      const table = document.getElementById('price-hist-table');
+      if (!supabaseClient || !hasPriceHistoryTable) {
+        if (status) status.textContent = 'Run Phase 3 SQL on More to store price history.';
+        if (table) table.innerHTML = '';
+        return;
+      }
+      const q = (document.getElementById('price-hist-q')?.value || '').trim().toLowerCase();
+      const { data, error } = await supabaseClient.from('inventory_price_history')
+        .select('*').order('recorded_at', { ascending: false }).limit(500);
+      if (error) {
+        if (status) status.textContent = error.message;
+        return;
+      }
+      let rows = data || [];
+      if (q) {
+        rows = rows.filter(r =>
+          String(r.part_number || '').toLowerCase().includes(q) ||
+          String(r.name || '').toLowerCase().includes(q)
+        );
+      }
+      lastPriceHistoryRows = rows;
+      if (status) status.textContent = rows.length ? rows.length + ' rows' : 'No history yet.';
+      if (!table) return;
+      if (!rows.length) { table.innerHTML = ''; return; }
+      table.innerHTML = `<table>
+        <thead><tr><th>When</th><th>Part #</th><th>Name</th><th>Buy</th><th>Sell</th><th>List</th><th>By</th></tr></thead>
+        <tbody>${rows.map(r => `<tr>
+          <td style="font-size:0.78rem;white-space:nowrap;">${escapeHtml((r.recorded_at || '').slice(0, 16).replace('T', ' '))}</td>
+          <td><code>${escapeHtml(r.part_number || '')}</code></td>
+          <td>${escapeHtml(r.name || '')}</td>
+          <td>${money(r.buy_price)}</td>
+          <td>${money(r.sell_price)}</td>
+          <td>${r.list_price != null ? escapeHtml(String(r.list_currency || '')) + ' ' + Number(r.list_price).toFixed(2) : '—'}</td>
+          <td style="font-size:0.78rem;">${escapeHtml(r.changed_by || '')}${r.note ? '<br><span style="color:var(--muted)">' + escapeHtml(r.note) + '</span>' : ''}</td>
+        </tr>`).join('')}</tbody></table>`;
+    }
+
+    function exportPriceHistoryCsv() {
+      if (!lastPriceHistoryRows.length) { showStatus('Generate the report first', 'error'); return; }
+      const headers = ['recorded_at', 'part_number', 'name', 'buy_price', 'sell_price', 'list_price', 'list_currency', 'qty', 'qty_used', 'note', 'changed_by'];
+      const lines = [headers.join(',')].concat(lastPriceHistoryRows.map(r => headers.map(h => {
+        const v = r[h] == null ? '' : String(r[h]);
+        return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+      }).join(',')));
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
+      a.download = 'price-history.csv';
+      a.click();
+    }
+
+    async function ensureOpeningLayers() {
+      if (!hasCostLayersTable || !supabaseClient) return;
+      const { data } = await supabaseClient.from('inventory_cost_layers')
+        .select('inventory_id,qty_remaining,condition')
+        .eq('condition', 'new')
+        .gt('qty_remaining', 0);
+      const remainingById = {};
+      (data || []).forEach(r => {
+        remainingById[r.inventory_id] = (remainingById[r.inventory_id] || 0) + (Number(r.qty_remaining) || 0);
+      });
+      for (const item of inventory) {
+        if (isExcludedFromValue(item)) continue;
+        const q = item.qty || 0;
+        if (q <= 0) continue;
+        const remaining = remainingById[item.id] || 0;
+        if (remaining + 0.0001 < q) {
+          await addCostLayer({
+            inventory_id: item.id,
+            part_number: item.part_number,
+            unit_cost: item.buy_price || 0,
+            qty: q - remaining,
+            condition: 'new',
+            source: 'opening'
+          });
+        }
+      }
+    }
+
+    async function loadEndingInventoryReport() {
+      const status = document.getElementById('ending-inv-status');
+      const table = document.getElementById('ending-inv-table');
+      const method = costingMethod === 'lifo' ? 'LIFO' : 'FIFO';
+      if (!supabaseClient || !hasCostLayersTable) {
+        if (status) status.textContent = 'Run Phase 3 SQL on More for LIFO/FIFO layers.';
+        return;
+      }
+      await ensureOpeningLayers();
+      const { data, error } = await supabaseClient.from('inventory_cost_layers')
+        .select('*')
+        .gt('qty_remaining', 0)
+        .order('acquired_at', { ascending: true });
+      if (error) {
+        if (status) status.textContent = error.message;
+        return;
+      }
+      const byInv = {};
+      (data || []).forEach(layer => {
+        const key = layer.inventory_id || layer.part_number;
+        if (!byInv[key]) byInv[key] = [];
+        byInv[key].push(layer);
+      });
+      const rows = [];
+      let total = 0, usedCount = 0;
+      inventory.forEach(item => {
+        if (isExcludedFromValue(item)) return;
+        const layers = (byInv[item.id] || []).filter(l => l.condition !== 'used');
+        const value = layers.reduce((s, l) => s + (Number(l.qty_remaining) || 0) * (Number(l.unit_cost) || 0), 0);
+        const layerQty = layers.reduce((s, l) => s + (Number(l.qty_remaining) || 0), 0);
+        total += value;
+        usedCount += qtyUsedOf(item);
+        rows.push({
+          part_number: item.part_number,
+          name: item.name,
+          qty_new: item.qty || 0,
+          qty_used: qtyUsedOf(item),
+          layer_qty: layerQty,
+          value,
+          method
+        });
+      });
+      lastEndingInvRows = rows;
+      if (status) status.textContent = method + ' ending inventory ' + money(total) + (usedCount ? ' · used ' + usedCount + ' (not valued)' : '');
+      if (!table) return;
+      table.innerHTML = `<table>
+        <thead><tr><th>Part #</th><th>Name</th><th>New</th><th>Used</th><th>${method} $</th></tr></thead>
+        <tbody>${rows.map(r => `<tr>
+          <td><code>${escapeHtml(r.part_number || '')}</code></td>
+          <td>${escapeHtml(r.name || '')}</td>
+          <td>${r.qty_new}</td>
+          <td>${r.qty_used || '—'}</td>
+          <td>${money(r.value)}</td>
+        </tr>`).join('')}</tbody>
+        <tfoot><tr><td colspan="4"><strong>Total (${method})</strong></td><td><strong>${money(total)}</strong></td></tr></tfoot>
+      </table>`;
+    }
+
+    function exportEndingInventoryCsv() {
+      if (!lastEndingInvRows.length) { showStatus('Generate the report first', 'error'); return; }
+      const headers = ['part_number', 'name', 'qty_new', 'qty_used', 'value', 'method'];
+      const lines = [headers.join(',')].concat(lastEndingInvRows.map(r => headers.map(h => {
+        const v = r[h] == null ? '' : String(r[h]);
+        return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+      }).join(',')));
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
+      a.download = 'ending-inventory.csv';
+      a.click();
+    }
+
+    function exportData() {
+      const blob = new Blob([JSON.stringify(inventory, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `inventory-${new Date().toISOString().slice(0,10)}.json`;
+      a.click();
+    }
+
+    async function importData(e) {
+      const file = e.target.files[0];
+      if (!file || !supabaseClient) return;
+      if (!requireUser('importing')) {
+        e.target.value = '';
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const data = JSON.parse(reader.result);
+          if (!Array.isArray(data)) throw new Error('Invalid format');
+          if (!confirm(`Import ${data.length} items as ${currentUser()}?\n\nExisting part numbers will be skipped.`)) return;
+          let added = 0, skipped = 0, failed = 0;
+          for (const row of data) {
+            if (!row.part_number || !row.name) continue;
+            const pn = String(row.part_number).replace(/\s+/g, '');
+            const { data: exists } = await supabaseClient.from('inventory').select('id').eq('part_number', pn).maybeSingle();
+            if (exists) { skipped++; continue; }
+            const payload = {
+              part_number: pn,
+              name: row.name,
+              qty: row.qty || 0,
+              qty_used: row.qty_used || 0,
+              reorder_level: row.reorder_level != null ? row.reorder_level : 0,
+              buy_price: row.buy_price ?? null,
+              sell_price: row.sell_price ?? null,
+              source: row.source || null,
+              category: row.category || null,
+              exclude_from_valuation: !!row.exclude_from_valuation,
+              list_price: row.list_price ?? null,
+              list_currency: row.list_currency || null,
+              sell_factor: row.sell_factor ?? null,
+              location: row.location || null,
+              notes: row.notes || null,
+              open_order: !!(row.open_order || row.on_order),
+              date_ordered: row.date_ordered || null,
+              estimated_delivery: row.estimated_delivery || null,
+              ordered_qty: row.ordered_qty || null,
+              updated_by: currentUser()
+            };
+            if (!hasCategoryColumn) delete payload.category;
+            if (!hasQtyUsedColumn) delete payload.qty_used;
+            if (!hasExcludeValueColumn) delete payload.exclude_from_valuation;
+            if (!hasListPriceColumn) {
+              delete payload.list_price;
+              delete payload.list_currency;
+              delete payload.sell_factor;
+            }
+            if (hasBarcodeColumn) payload.barcode = row.barcode || generateBarcode();
+            const { data: inserted, error } = await supabaseClient.from('inventory').insert(payload).select('id').maybeSingle();
+            if (error) {
+              failed++;
+              console.error('Import row failed', pn, error);
+              if (/category/i.test(error.message || '')) {
+                hasCategoryColumn = false;
+                delete payload.category;
+              }
+              if (/barcode/i.test(error.message || '')) {
+                hasBarcodeColumn = false;
+                delete payload.barcode;
+              }
+              if (!hasCategoryColumn || !hasBarcodeColumn) {
+                const retry = await supabaseClient.from('inventory').insert(payload).select('id').maybeSingle();
+                if (!retry.error) {
+                  added++;
+                  failed--;
+                  await logAdjustment({
+                    inventory_id: retry.data?.id,
+                    part_number: pn,
+                    name: row.name,
+                    action: 'create',
+                    qty_before: null,
+                    qty_after: row.qty || 0,
+                    details: 'Imported'
+                  });
+                }
+              }
+            } else {
+              added++;
+              await logAdjustment({
+                inventory_id: inserted?.id,
+                part_number: pn,
+                name: row.name,
+                action: 'create',
+                qty_before: null,
+                qty_after: row.qty || 0,
+                details: 'Imported'
+              });
+            }
+          }
+          showStatus(`Import done: ${added} added, ${skipped} skipped${failed ? ', ' + failed + ' failed' : ''} (${currentUser()})`, failed ? 'error' : 'success');
+          await loadInventory();
+        } catch (err) {
+          showStatus('Import failed: ' + err.message, 'error');
+        }
+      };
+      reader.readAsText(file);
+      e.target.value = '';
+    }
+
+    bindCombos();
+    async function setStaffPassword() {
+      if (!requireUser('changing a password')) return;
+      const status = document.getElementById('pw-status');
+      const email = document.getElementById('pw-who')?.value || '';
+      const a = document.getElementById('pw-new')?.value || '';
+      if (!email) {
+        if (status) status.textContent = 'Select a person.';
+        return;
+      }
+      const b = document.getElementById('pw-again')?.value || '';
+      if (a.length < 8) {
+        if (status) status.textContent = 'Use at least 8 characters.';
+        return;
+      }
+      if (a !== b) {
+        if (status) status.textContent = 'The two passwords do not match.';
+        return;
+      }
+      if (status) status.textContent = 'Saving…';
+      const { data, error } = await supabaseClient.functions.invoke('set-staff-password', {
+        body: { email, password: a }
+      });
+      document.getElementById('pw-new').value = '';
+      document.getElementById('pw-again').value = '';
+      if (error) {
+        let msg = error.message || 'Could not set password.';
+        try {
+          const ctx = await error.context?.json?.();
+          if (ctx && ctx.error) msg = ctx.error;
+        } catch (e) {}
+        if (status) status.textContent = msg;
+        showStatus(msg, 'error');
+        return;
+      }
+      if (data && data.error) {
+        if (status) status.textContent = data.error;
+        showStatus(data.error, 'error');
+        return;
+      }
+      const mine = InmarAuth.STAFF.find(p => p.email === email);
+      const self = mine && mine.name === currentUser();
+      let msg = 'Password saved. They unlock once on their phone and save it.';
+      if (self) {
+        const again = await InmarAuth.signIn(email, a);
+        msg = again.error
+          ? 'Password saved. Sign out and unlock with the new password, then set the others.'
+          : 'Password saved. You are still signed in.';
+      }
+      if (status) status.textContent = msg;
+      showStatus(msg, 'success');
+    }
+
+    async function enterShop() {
+      document.body.classList.remove('auth-locked');
+      updateUserUI();
+      if (window.InmarAuth) InmarAuth.fillStaffSelect(document.getElementById('pw-who'));
+      if (!isConfigured) return;
+      window.__shopEntered = true;
+      syncPricingUi();
+      await loadGlobalFactorInputs();
+      if (typeof window.refreshQuoteLookups === 'function') await window.refreshQuoteLookups();
+      await loadInventory();
+      subscribeRealtime();
+      await handleDeepLinkPart();
+    }
+    const signOutBtn = document.getElementById('sign-out-btn');
+    if (signOutBtn) signOutBtn.addEventListener('click', async () => {
+      if (window.InmarAuth) await InmarAuth.signOut();
+      location.reload();
+    });
+
+    window.InmarShop = {
+      get inventory() { return inventory; },
+      get supabaseClient() { return supabaseClient; },
+      get hasQuotesTables() { return hasQuotesTables; },
+      showStatus,
+      escapeHtml,
+      money,
+      currentUser,
+      requireUser,
+      updateUserUI
+    };
+    if (window.InmarAuth) {
+      InmarAuth.bindLoginForm(() => { enterShop(); });
+      InmarAuth.restore().then((ok) => { if (ok) enterShop(); });
+    }
+  </script>
+</body>
+</html>
